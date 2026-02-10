@@ -14,7 +14,7 @@ const HYBRID_CONFIG = {
 };
 
 /**
- * ハイブリッドAI関数: AI
+ * ハイブリッドAI関数: askAI
  * Gemini API を優先して呼び出し、失敗時に OpenRouter 無料枠へ自動フォールバック。
  * スプレッドシートから直接呼び出し可能。
  * @param {string} promptText 今回の質問 (必須)
@@ -23,9 +23,10 @@ const HYBRID_CONFIG = {
  * @param {Range} fewShotRange 例示の範囲 [入力例, 出力例] (任意)
  * @param {Range} historyRange 過去の対話範囲 [自分, AI] (任意)
  * @param {string} geminiModel Geminiモデル名 (初期値: gemini-3-flash-preview)
+ * @param {boolean} showModel 使用されたモデル名を表示するか (初期値: false)
  * @customfunction
  */
-function AI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, historyRange = null, geminiModel = HYBRID_CONFIG.GEMINI_MODEL) {
+function askAI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, historyRange = null, geminiModel = HYBRID_CONFIG.GEMINI_MODEL, showModel = false) {
 
     if (!promptText) return "【通知】質問を入力してください。";
 
@@ -35,7 +36,7 @@ function AI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, histor
     const geminiResult = _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, geminiModel);
 
     if (geminiResult.success) {
-        return geminiResult.text;
+        return showModel ? `【${geminiModel}】\n${geminiResult.text}` : geminiResult.text;
     }
 
     // Gemini失敗時のログ
@@ -47,7 +48,7 @@ function AI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, histor
     const orResult = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange);
 
     if (orResult.success) {
-        return orResult.text;
+        return showModel ? `【${HYBRID_CONFIG.OPENROUTER_MODEL}】\n${orResult.text}` : orResult.text;
     }
 
     // 両方失敗
