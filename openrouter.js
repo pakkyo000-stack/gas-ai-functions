@@ -21,9 +21,10 @@ const AI_CONFIG = {
  * @param {Range} fewShotRange 例示の範囲 [入力例, 出力例] (任意)
  * @param {Range} historyRange 過去の対話範囲 [自分, AI] (任意)
  * @param {string} modelId モデルID (初期値 設定値参照)
+ * @param {boolean} showModel 使用されたモデル名を表示するか (初期値: false)
  * @customfunction
  */
-function my_AI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, historyRange = null, modelId = AI_CONFIG.DEFAULT_MODEL) {
+function my_AI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, historyRange = null, modelId = AI_CONFIG.DEFAULT_MODEL, showModel = false) {
 
   if (!promptText) return "【通知】質問を入力してください。";
 
@@ -78,7 +79,7 @@ function my_AI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, his
 
         // 回答が空でなければ、そのまま結果を返して終了
         if (answer !== "") {
-          return answer;
+          return showModel ? "【" + modelId + "】\n" + answer : answer;
         }
         lastError = "AIの回答が空欄でした";
       } else {
