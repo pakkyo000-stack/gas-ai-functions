@@ -25,7 +25,7 @@ function _getConfig() {
             "nvidia/nemotron-3-nano-30b-a3b:free",
             "tngtech/deepseek-r1t2-chimera:free"
         ],
-        OPENROUTER_FREE_MODEL: "openrouter/free",
+        OPENROUTER_FREE_MODEL: "meta-llama/llama-3.2-3b-instruct:free",
         MAX_TOKENS: 1024,
         MAX_RETRY: 3
     };
