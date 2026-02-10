@@ -4,14 +4,23 @@
 // ============================================================
 
 // APIキー取得（PropertiesService優先、未設定ならスクリプト内定数にフォールバック）
+// APIキー取得（PropertiesService優先、未設定ならスクリプト内定数にフォールバック）
 function _getConfig() {
     const props = PropertiesService.getScriptProperties();
     return {
         GEMINI_API_KEY: props.getProperty('GEMINI_API_KEY') || 'AIzaSyBGSEZdaxEQCXGCNQ1GB873QtrtGQrRI14',
-        GEMINI_MODEL: "gemini-2.5-flash",
+        GEMINI_MODELS: [
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro"
+        ],
         OPENROUTER_API_KEY: props.getProperty('OPENROUTER_API_KEY') || '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',
         OPENROUTER_URL: 'https://openrouter.ai/api/v1/chat/completions',
-        OPENROUTER_MODEL: "openrouter/free",
+        OPENROUTER_MODELS: [
+            "openai/gpt-4o-mini",
+            "anthropic/claude-3-haiku"
+        ],
+        OPENROUTER_FREE_MODEL: "openrouter/free",
         MAX_TOKENS: 1024,
         MAX_RETRY: 2
     };
@@ -26,18 +35,17 @@ function _getHybridConfig() {
 
 /**
  * ハイブリッドAI関数: askAI
- * Gemini API を優先して呼び出し、失敗時に OpenRouter 無料枠へ自動フォールバック。
+ * Gemini API (複数モデル順次試行) -> OpenRouter (複数モデル順次試行) -> OpenRouter Free の順でフォールバック
  * スプレッドシートから直接呼び出し可能。
  * @param {string} promptText 今回の質問 (必須)
  * @param {string} systemInst AIの役割・ルール (任意)
  * @param {number} temp 温度感 0.0-2.0 (初期値 0.3)
  * @param {Range} fewShotRange 例示の範囲 [入力例, 出力例] (任意)
  * @param {Range} historyRange 過去の対話範囲 [自分, AI] (任意)
- * @param {string} geminiModel Geminiモデル名 (初期値: gemini-3-flash-preview)
  * @param {boolean} showModel 使用されたモデル名を表示するか (初期値: false)
  * @customfunction
  */
-function askAI(promptText, systemInst, temp, fewShotRange, historyRange, geminiModel, showModel) {
+function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showModel) {
     const config = _getHybridConfig();
 
     // デフォルト値 + 型変換（@customfunction は全て文字列で渡される）
@@ -45,7 +53,7 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, geminiM
     temp = (temp === undefined || temp === null || temp === "") ? 0.3 : Number(temp);
     fewShotRange = fewShotRange || null;
     historyRange = historyRange || null;
-    geminiModel = geminiModel || config.GEMINI_MODEL;
+    // geminiModel 引数は廃止されました
     showModel = (showModel === true || showModel === "TRUE" || showModel === "true");
 
     if (!promptText) return "【通知】質問を入力してください。";
@@ -59,35 +67,54 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, geminiM
         return showModel ? "【キャッシュ】\n" + cached : cached;
     }
 
-    // ============================================================
-    // 1. Gemini API で試行
-    // ============================================================
-    const geminiResult = _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, geminiModel, config);
+    let lastError = "";
 
-    if (geminiResult.success) {
-        _setCachedAnswer(cacheKey, geminiResult.text);
-        _logAIUsage(geminiModel, promptText, "成功", "Gemini");
-        return showModel ? "【" + geminiModel + "】\n" + geminiResult.text : geminiResult.text;
+    // ============================================================
+    // 1. Gemini モデル群で試行 (上から順に)
+    // ============================================================
+    for (const model of config.GEMINI_MODELS) {
+        const result = _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, model, config);
+        if (result.success) {
+            _setCachedAnswer(cacheKey, result.text);
+            _logAIUsage(model, promptText, "成功", "Gemini");
+            return showModel ? "【" + model + "】\n" + result.text : result.text;
+        }
+        lastError = `Gemini(${model}): ${result.error}`;
+        console.warn(`【Gemini失敗】${model}: ${result.error}`);
     }
 
-    // Gemini失敗時のログ
-    console.warn("【Gemini失敗】" + geminiResult.error + " → OpenRouterへフォールバック");
-    _logAIUsage(geminiModel, promptText, "失敗→FB", "Gemini");
-
     // ============================================================
-    // 2. OpenRouter 無料枠へフォールバック
+    // 2. OpenRouter モデル群で試行 (上から順に)
     // ============================================================
-    const orResult = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config);
-
-    if (orResult.success) {
-        _setCachedAnswer(cacheKey, orResult.text);
-        _logAIUsage(config.OPENROUTER_MODEL, promptText, "成功(FB)", "OpenRouter");
-        return showModel ? "【" + config.OPENROUTER_MODEL + "】\n" + orResult.text : orResult.text;
+    if (config.OPENROUTER_MODELS && config.OPENROUTER_MODELS.length > 0) {
+        for (const model of config.OPENROUTER_MODELS) {
+            const result = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, model);
+            if (result.success) {
+                _setCachedAnswer(cacheKey, result.text);
+                _logAIUsage(model, promptText, "成功", "OpenRouter");
+                return showModel ? "【" + model + "】\n" + result.text : result.text;
+            }
+            lastError = `OpenRouter(${model}): ${result.error}`;
+            console.warn(`【OpenRouter失敗】${model}: ${result.error}`);
+        }
     }
 
-    // 両方失敗
+    // ============================================================
+    // 3. 最終手段: OpenRouter Free
+    // ============================================================
+    const freeModel = config.OPENROUTER_FREE_MODEL;
+    const freeResult = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, freeModel);
+
+    if (freeResult.success) {
+        _setCachedAnswer(cacheKey, freeResult.text);
+        _logAIUsage(freeModel, promptText, "成功(Free)", "OpenRouter");
+        return showModel ? "【" + freeModel + "】\n" + freeResult.text : freeResult.text;
+    }
+
+    // 全滅
+    const finalError = `【全API失敗】Last Error: ${freeResult.error}`;
     _logAIUsage("N/A", promptText, "全API失敗", "N/A");
-    return `【全API失敗】Gemini: ${geminiResult.error} / OpenRouter: ${orResult.error}`;
+    return finalError;
 }
 
 
@@ -183,7 +210,7 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
 // ============================================================
 // OpenRouter API 呼び出し（内部関数）
 // ============================================================
-function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config) {
+function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, model) {
     if (!config.OPENROUTER_API_KEY) return { success: false, error: "OPENROUTER_API_KEY 未設定" };
     // OpenRouter形式の messages を構築
     const messages = [];
@@ -210,7 +237,7 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
     messages.push({ role: "user", content: promptText });
 
     const payload = {
-        model: config.OPENROUTER_MODEL,
+        model: model,
         messages: messages,
         temperature: Number(temp),
         max_tokens: config.MAX_TOKENS
