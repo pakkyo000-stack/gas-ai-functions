@@ -3,15 +3,26 @@
 // Gemini API を優先し、エラー時に OpenRouter 無料枠へフォールバック
 // ============================================================
 
-const HYBRID_CONFIG = {
-    GEMINI_API_KEY: PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY'),
-    GEMINI_MODEL: "gemini-3-flash-preview",
-    OPENROUTER_API_KEY: PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY'),
-    OPENROUTER_URL: 'https://openrouter.ai/api/v1/chat/completions',
-    OPENROUTER_MODEL: "openrouter/free",
-    MAX_TOKENS: 1024,
-    MAX_RETRY: 2  // 各API側のリトライ回数
-};
+// APIキー取得（PropertiesService優先、未設定ならスクリプト内定数にフォールバック）
+function _getConfig() {
+    const props = PropertiesService.getScriptProperties();
+    return {
+        GEMINI_API_KEY: props.getProperty('GEMINI_API_KEY') || 'AIzaSyBGSEZdaxEQCXGCNQ1GB873QtrtGQrRI14',
+        GEMINI_MODEL: "gemini-2.5-flash",
+        OPENROUTER_API_KEY: props.getProperty('OPENROUTER_API_KEY') || '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',
+        OPENROUTER_URL: 'https://openrouter.ai/api/v1/chat/completions',
+        OPENROUTER_MODEL: "openrouter/free",
+        MAX_TOKENS: 1024,
+        MAX_RETRY: 2
+    };
+}
+
+// グローバル定数（遅延初期化：customfunction でも安全に動作）
+let _hybridConfig = null;
+function _getHybridConfig() {
+    if (!_hybridConfig) _hybridConfig = _getConfig();
+    return _hybridConfig;
+}
 
 /**
  * ハイブリッドAI関数: askAI
@@ -26,7 +37,16 @@ const HYBRID_CONFIG = {
  * @param {boolean} showModel 使用されたモデル名を表示するか (初期値: false)
  * @customfunction
  */
-function askAI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, historyRange = null, geminiModel = HYBRID_CONFIG.GEMINI_MODEL, showModel = false) {
+function askAI(promptText, systemInst, temp, fewShotRange, historyRange, geminiModel, showModel) {
+    const config = _getHybridConfig();
+
+    // デフォルト値 + 型変換（@customfunction は全て文字列で渡される）
+    systemInst = systemInst || "";
+    temp = (temp === undefined || temp === null || temp === "") ? 0.3 : Number(temp);
+    fewShotRange = fewShotRange || null;
+    historyRange = historyRange || null;
+    geminiModel = geminiModel || config.GEMINI_MODEL;
+    showModel = (showModel === true || showModel === "TRUE" || showModel === "true");
 
     if (!promptText) return "【通知】質問を入力してください。";
 
@@ -42,27 +62,27 @@ function askAI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, his
     // ============================================================
     // 1. Gemini API で試行
     // ============================================================
-    const geminiResult = _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, geminiModel);
+    const geminiResult = _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, geminiModel, config);
 
     if (geminiResult.success) {
         _setCachedAnswer(cacheKey, geminiResult.text);
         _logAIUsage(geminiModel, promptText, "成功", "Gemini");
-        return showModel ? `【${geminiModel}】\n${geminiResult.text}` : geminiResult.text;
+        return showModel ? "【" + geminiModel + "】\n" + geminiResult.text : geminiResult.text;
     }
 
     // Gemini失敗時のログ
     console.warn("【Gemini失敗】" + geminiResult.error + " → OpenRouterへフォールバック");
-    _logAIUsage(geminiModel, promptText, "失敗→フォールバック", "Gemini");
+    _logAIUsage(geminiModel, promptText, "失敗→FB", "Gemini");
 
     // ============================================================
     // 2. OpenRouter 無料枠へフォールバック
     // ============================================================
-    const orResult = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange);
+    const orResult = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config);
 
     if (orResult.success) {
         _setCachedAnswer(cacheKey, orResult.text);
-        _logAIUsage(HYBRID_CONFIG.OPENROUTER_MODEL, promptText, "成功（フォールバック）", "OpenRouter");
-        return showModel ? `【${HYBRID_CONFIG.OPENROUTER_MODEL}】\n${orResult.text}` : orResult.text;
+        _logAIUsage(config.OPENROUTER_MODEL, promptText, "成功(FB)", "OpenRouter");
+        return showModel ? "【" + config.OPENROUTER_MODEL + "】\n" + orResult.text : orResult.text;
     }
 
     // 両方失敗
@@ -74,9 +94,10 @@ function askAI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, his
 // ============================================================
 // Gemini API 呼び出し（内部関数）
 // ============================================================
-function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, model) {
-    const API_KEY = HYBRID_CONFIG.GEMINI_API_KEY;
-    const URL = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, model, config) {
+    const API_KEY = config.GEMINI_API_KEY;
+    if (!API_KEY) return { success: false, error: "GEMINI_API_KEY 未設定" };
+    const URL = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + API_KEY;
 
     // Gemini形式の contents を構築（会話履歴・Few-shot対応）
     const contents = [];
@@ -104,7 +125,7 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
 
     const payload = {
         contents: contents,
-        generationConfig: { temperature: temp, maxOutputTokens: HYBRID_CONFIG.MAX_TOKENS },
+        generationConfig: { temperature: Number(temp), maxOutputTokens: config.MAX_TOKENS },
         system_instruction: systemInst
             ? { role: "system", parts: [{ text: systemInst }] }
             : undefined
@@ -117,7 +138,7 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
         muteHttpExceptions: true
     };
 
-    for (let attempt = 1; attempt <= HYBRID_CONFIG.MAX_RETRY; attempt++) {
+    for (let attempt = 1; attempt <= config.MAX_RETRY; attempt++) {
         try {
             const response = UrlFetchApp.fetch(URL, options);
             const responseCode = response.getResponseCode();
@@ -140,16 +161,16 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
                 errorMsg = responseText.substring(0, 200);
             }
 
-            if (attempt < HYBRID_CONFIG.MAX_RETRY) {
+            if (attempt < config.MAX_RETRY) {
                 Utilities.sleep(attempt * 1000);
             }
 
-            if (attempt === HYBRID_CONFIG.MAX_RETRY) {
+            if (attempt === config.MAX_RETRY) {
                 return { success: false, error: errorMsg };
             }
 
         } catch (e) {
-            if (attempt === HYBRID_CONFIG.MAX_RETRY) {
+            if (attempt === config.MAX_RETRY) {
                 return { success: false, error: "接続エラー: " + e.message };
             }
             Utilities.sleep(attempt * 1000);
@@ -162,7 +183,8 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
 // ============================================================
 // OpenRouter API 呼び出し（内部関数）
 // ============================================================
-function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange) {
+function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config) {
+    if (!config.OPENROUTER_API_KEY) return { success: false, error: "OPENROUTER_API_KEY 未設定" };
     // OpenRouter形式の messages を構築
     const messages = [];
     if (systemInst) messages.push({ role: "system", content: systemInst });
@@ -188,23 +210,23 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
     messages.push({ role: "user", content: promptText });
 
     const payload = {
-        model: HYBRID_CONFIG.OPENROUTER_MODEL,
+        model: config.OPENROUTER_MODEL,
         messages: messages,
-        temperature: temp,
-        max_tokens: HYBRID_CONFIG.MAX_TOKENS
+        temperature: Number(temp),
+        max_tokens: config.MAX_TOKENS
     };
 
     const options = {
         method: "post",
         contentType: "application/json",
-        headers: { "Authorization": "Bearer " + HYBRID_CONFIG.OPENROUTER_API_KEY },
+        headers: { "Authorization": "Bearer " + config.OPENROUTER_API_KEY },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true
     };
 
-    for (let attempt = 1; attempt <= HYBRID_CONFIG.MAX_RETRY; attempt++) {
+    for (let attempt = 1; attempt <= config.MAX_RETRY; attempt++) {
         try {
-            const response = UrlFetchApp.fetch(HYBRID_CONFIG.OPENROUTER_URL, options);
+            const response = UrlFetchApp.fetch(config.OPENROUTER_URL, options);
             const json = JSON.parse(response.getContentText());
             const statusCode = response.getResponseCode();
 
@@ -215,16 +237,16 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
 
             const errorMsg = json.error ? json.error.message : "ステータスコード: " + statusCode;
 
-            if (attempt < HYBRID_CONFIG.MAX_RETRY) {
+            if (attempt < config.MAX_RETRY) {
                 Utilities.sleep(attempt * 1000);
             }
 
-            if (attempt === HYBRID_CONFIG.MAX_RETRY) {
+            if (attempt === config.MAX_RETRY) {
                 return { success: false, error: errorMsg };
             }
 
         } catch (e) {
-            if (attempt === HYBRID_CONFIG.MAX_RETRY) {
+            if (attempt === config.MAX_RETRY) {
                 return { success: false, error: "接続エラー: " + e.toString() };
             }
             Utilities.sleep(attempt * 1000);
