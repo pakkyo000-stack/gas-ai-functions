@@ -10,19 +10,24 @@ function _getConfig() {
     return {
         GEMINI_API_KEY: props.getProperty('GEMINI_API_KEY') || 'AIzaSyBGSEZdaxEQCXGCNQ1GB873QtrtGQrRI14',
         GEMINI_MODELS: [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-pro"
+            "gemini-3-flash-preview",
+            "gemini-2.5-flash-preview",
+            "gemini-2.0-flash-preview",
+            "gemini-1.5-flash-preview",
+            "gemini-1.5-pro-preview"
         ],
         OPENROUTER_API_KEY: props.getProperty('OPENROUTER_API_KEY') || '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',
         OPENROUTER_URL: 'https://openrouter.ai/api/v1/chat/completions',
         OPENROUTER_MODELS: [
-            "openai/gpt-4o-mini",
-            "anthropic/claude-3-haiku"
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "meta-llama/llama-3.2-3b-instruct:free",
+            "arcee-ai/trinity-large-preview:free",
+            "nvidia/nemotron-3-nano-30b-a3b:free",
+            "tngtech/deepseek-r1t2-chimera:free"
         ],
         OPENROUTER_FREE_MODEL: "openrouter/free",
         MAX_TOKENS: 1024,
-        MAX_RETRY: 2
+        MAX_RETRY: 3
     };
 }
 
@@ -189,7 +194,7 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
             }
 
             if (attempt < config.MAX_RETRY) {
-                Utilities.sleep(attempt * 1000);
+                Utilities.sleep(attempt * 2000);
             }
 
             if (attempt === config.MAX_RETRY) {
@@ -200,7 +205,7 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
             if (attempt === config.MAX_RETRY) {
                 return { success: false, error: "接続エラー: " + e.message };
             }
-            Utilities.sleep(attempt * 1000);
+            Utilities.sleep(attempt * 2000);
         }
     }
     return { success: false, error: "不明なエラー" };
@@ -265,7 +270,7 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
             const errorMsg = json.error ? json.error.message : "ステータスコード: " + statusCode;
 
             if (attempt < config.MAX_RETRY) {
-                Utilities.sleep(attempt * 1000);
+                Utilities.sleep(attempt * 2000);
             }
 
             if (attempt === config.MAX_RETRY) {
@@ -276,7 +281,7 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
             if (attempt === config.MAX_RETRY) {
                 return { success: false, error: "接続エラー: " + e.toString() };
             }
-            Utilities.sleep(attempt * 1000);
+            Utilities.sleep(attempt * 2000);
         }
     }
     return { success: false, error: "不明なエラー" };

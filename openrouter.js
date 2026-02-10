@@ -88,11 +88,11 @@ function my_AI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, his
 
       // 失敗した場合、少し待ってから次の試行へ（1秒ずつ待機時間を増やす）
       console.warn(`試行 ${attempt} 回目失敗: ${lastError}`);
-      Utilities.sleep(attempt * 1000);
+      Utilities.sleep(attempt * 2000);
 
     } catch (e) {
       lastError = "接続エラー: " + e.toString();
-      Utilities.sleep(attempt * 1000);
+      Utilities.sleep(attempt * 2000);
     }
   }
 
