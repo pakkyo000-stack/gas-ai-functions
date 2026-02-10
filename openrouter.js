@@ -6,7 +6,7 @@
 const AI_CONFIG = {
   API_KEY: PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY'),
   BASE_URL: 'https://openrouter.ai/api/v1/chat/completions',
-  DEFAULT_MODEL: "meta-llama/llama-3.3-70b-instruct:free",
+  DEFAULT_MODEL: "openrouter/free",
   MAX_TOKENS: 1024,
   MAX_RETRY: 3      // 空欄やエラー時に最大何回やり直すか
 };
