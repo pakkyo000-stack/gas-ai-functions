@@ -3,12 +3,11 @@
 // Gemini API を優先し、エラー時に OpenRouter 無料枠へフォールバック
 // ============================================================
 
-// APIキー取得（PropertiesService優先、未設定ならスクリプト内定数にフォールバック）
-// APIキー取得（PropertiesService優先、未設定ならスクリプト内定数にフォールバック）
+// APIキー取得（PropertiesService優先、未設定ならエラー）
 function _getConfig() {
     const props = PropertiesService.getScriptProperties();
     return {
-        GEMINI_API_KEY: props.getProperty('GEMINI_API_KEY') || 'AIzaSyBGSEZdaxEQCXGCNQ1GB873QtrtGQrRI14',
+        GEMINI_API_KEY: props.getProperty('GEMINI_API_KEY'),
         GEMINI_MODELS: [
             "gemini-3-flash-preview",
             "gemini-2.5-flash-preview",
@@ -16,7 +15,7 @@ function _getConfig() {
             "gemini-1.5-flash-preview",
             "gemini-1.5-pro-preview"
         ],
-        OPENROUTER_API_KEY: props.getProperty('OPENROUTER_API_KEY') || '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',
+        OPENROUTER_API_KEY: props.getProperty('OPENROUTER_API_KEY'),
         OPENROUTER_URL: 'https://openrouter.ai/api/v1/chat/completions',
         OPENROUTER_MODELS: [
             "meta-llama/llama-3.3-70b-instruct:free",
