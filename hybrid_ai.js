@@ -31,16 +31,28 @@ function askAI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, his
     if (!promptText) return "【通知】質問を入力してください。";
 
     // ============================================================
+    // 0. キャッシュチェック（同じ質問は再利用）
+    // ============================================================
+    const cacheKey = _makeCacheKey(promptText, systemInst, temp);
+    const cached = _getCachedAnswer(cacheKey);
+    if (cached) {
+        return showModel ? "【キャッシュ】\n" + cached : cached;
+    }
+
+    // ============================================================
     // 1. Gemini API で試行
     // ============================================================
     const geminiResult = _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, geminiModel);
 
     if (geminiResult.success) {
+        _setCachedAnswer(cacheKey, geminiResult.text);
+        _logAIUsage(geminiModel, promptText, "成功", "Gemini");
         return showModel ? `【${geminiModel}】\n${geminiResult.text}` : geminiResult.text;
     }
 
     // Gemini失敗時のログ
     console.warn("【Gemini失敗】" + geminiResult.error + " → OpenRouterへフォールバック");
+    _logAIUsage(geminiModel, promptText, "失敗→フォールバック", "Gemini");
 
     // ============================================================
     // 2. OpenRouter 無料枠へフォールバック
@@ -48,10 +60,13 @@ function askAI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, his
     const orResult = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange);
 
     if (orResult.success) {
+        _setCachedAnswer(cacheKey, orResult.text);
+        _logAIUsage(HYBRID_CONFIG.OPENROUTER_MODEL, promptText, "成功（フォールバック）", "OpenRouter");
         return showModel ? `【${HYBRID_CONFIG.OPENROUTER_MODEL}】\n${orResult.text}` : orResult.text;
     }
 
     // 両方失敗
+    _logAIUsage("N/A", promptText, "全API失敗", "N/A");
     return `【全API失敗】Gemini: ${geminiResult.error} / OpenRouter: ${orResult.error}`;
 }
 
