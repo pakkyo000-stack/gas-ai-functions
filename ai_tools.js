@@ -193,3 +193,5 @@ function summarizeAI(text, maxChars = 200) {
     // 温度を低め(0.2)に設定して正確な要約を促す
     return askAI(text, systemInst, 0.2);
 }
+
+// Last Updated: 2026-02-11

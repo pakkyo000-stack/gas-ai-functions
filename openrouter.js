@@ -95,17 +95,12 @@ function _formatModelHeader_OR(modelName, tokens, elapsedMs) {
  * @param {number} temp         温度 0.0〜2.0 (初期値 0.3)
  * @param {Range}  fewShotRange 例示の範囲 [入力例, 出力例] (任意)
  * @param {Range}  historyRange 過去の対話範囲 [自分, AI] (任意)
- * @param {string} modelId      特定モデルを指定 (省略時はリスト順に自動試行)
  * @param {boolean} showModel   モデル名+トークン数+応答時間を表示するか (初期値: false)
  * @customfunction
  */
-function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, modelId, showModel) {
+function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, showModel) {
 
   // 引数の補正処理
-  if (modelId === true || modelId === false || modelId === "TRUE" || modelId === "FALSE" || modelId === "true" || modelId === "false") {
-    showModel = modelId;
-    modelId = "";
-  }
   systemInst = systemInst || "";
   temp = (temp === undefined || temp === null || temp === "") ? 0.3 : Number(temp);
   fewShotRange = fewShotRange || null;
@@ -138,15 +133,31 @@ function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, modelId
   // 試行結果を記録する配列（最終エラーサマリー用）
   const trialLog = [];
 
-  // 【パターンA】モデルID明示指定 → そのモデルだけで試行
-  if (modelId) {
-    const result = _tryModel(modelId, messages, temp);
-    if (result.success) {
-      const displayModel = result.actualModel || modelId;
-      return showModel ? _formatModelHeader_OR(displayModel, result.tokens, result.elapsedMs) + "\n" + result.text : result.text;
-    }
-    return `【失敗】${modelId}: ${result.errorDetail}`;
+  // 入力チェック
+  if (!promptText) return "【通知】質問を入力してください。";
+  if (!AI_CONFIG.API_KEY) return "【🔑APIキー未設定】OPENROUTER_API_KEY をプロジェクト設定 > スクリプトプロパティで登録してください。";
+
+  // メッセージ組み立て
+  const messages = [];
+  if (systemInst) messages.push({ role: "system", content: systemInst });
+  if (fewShotRange && Array.isArray(fewShotRange)) {
+    fewShotRange.forEach(row => {
+      if (row[0] && row[1]) {
+        messages.push({ role: "user", content: "Ex: " + row[0] });
+        messages.push({ role: "assistant", content: "Ans: " + row[1] });
+      }
+    });
   }
+  if (historyRange && Array.isArray(historyRange)) {
+    historyRange.forEach(row => {
+      if (row[0]) messages.push({ role: "user", content: row[0].toString() });
+      if (row[1]) messages.push({ role: "assistant", content: row[1].toString() });
+    });
+  }
+  messages.push({ role: "user", content: promptText });
+
+  // 試行結果を記録する配列（最終エラーサマリー用）
+  const trialLog = [];
 
   // 【パターンB】リストの上から順番に試す
   for (const model of AI_CONFIG.MODELS) {
@@ -260,4 +271,7 @@ function _tryModel(model, messages, temp) {
   }
 
   return { success: false, errorDetail: lastErrorDetail };
+  return { success: false, errorDetail: lastErrorDetail };
 }
+
+// Last Updated: 2026-02-11
