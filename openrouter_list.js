@@ -1,50 +1,76 @@
-/**
- * OpenRouterから最新のモデル情報を取得し、シートを更新する
- */
-function updateOpenRouterModelList() {
-  const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
-  
-  try {
-    // 1. APIからモデルデータを取得
-    const fetchResponse = UrlFetchApp.fetch(OPENROUTER_MODELS_URL);
-    const parsedData = JSON.parse(fetchResponse.getContentText());
-    const modelArray = parsedData.data;
+// ============================================================
+// OpenRouter モデル一覧取得 (openrouter_list.js)
+// ============================================================
+// このファイルは、OpenRouter API で利用可能な「無料モデル」の
+// 一覧を取得してスプレッドシートに書き出す関数を提供します。
+//
+// 【用途】
+//  - openrouter.js や hybrid_ai.js で使うモデルを選ぶ参考に
+//  - どの無料モデルが現在使えるか一覧で確認できる
+//
+// 【使い方】
+//  スクリプトエディタから listFreeModels() を手動実行する。
+//  → スプレッドシートに「OpenRouter_Models」シートが作られ、
+//    無料モデルの一覧が書き込まれる。
+// ============================================================
 
-    // 2. 出力先のシートを準備
-    const activeSS = SpreadsheetApp.getActiveSpreadsheet();
-    let modelListSheet = activeSS.getSheetByName("OR_Model_List");
-    
-    if (!modelListSheet) {
-      modelListSheet = activeSS.insertSheet("OR_Model_List");
-    }
-    modelListSheet.clear(); // 既存のデータをリセット
 
-    // 3. ヘッダー行の作成
-    const tableHeader = [["Model ID", "Display Name", "Free?", "Context Limit", "Description"]];
-    modelListSheet.getRange(1, 1, 1, 5).setValues(tableHeader).setFontWeight("bold").setBackground("#f3f3f3");
+// ============================================================
+// メイン関数: listFreeModels
+// ============================================================
+// OpenRouter の API からモデル一覧を取得し、
+// 無料モデルだけをフィルタリングしてシートに書き出す。
+// ============================================================
+function listFreeModels() {
+  // ----------------------------------------------------------
+  // 1. OpenRouter API からモデル一覧を取得
+  // ----------------------------------------------------------
+  // このエンドポイントはAPIキー不要で誰でもアクセス可能
+  const url = "https://openrouter.ai/api/v1/models";
+  const response = UrlFetchApp.fetch(url);
+  const json = JSON.parse(response.getContentText());
 
-    // 4. 各モデルの情報を整形
-    const formattedRows = modelArray.map(modelEntry => {
-      // 料金が0かどうかで無料判定
-      const isFree = (parseFloat(modelEntry.pricing.prompt) === 0) ? "FREE" : "PAID";
-      
-      return [
-        modelEntry.id,               // ID (gemn関数の引数に使用)
-        modelEntry.name,             // 表示名
-        isFree,                      // 無料フラグ
-        modelEntry.context_length,   // 最大トークン数
-        modelEntry.description.substring(0, 200) // 説明文(長すぎるのでカット)
-      ];
-    });
+  // ----------------------------------------------------------
+  // 2. 無料モデルだけをフィルタリング
+  // ----------------------------------------------------------
+  // モデルIDに ":free" が含まれるものが無料モデル
+  const freeModels = json.data.filter(m => m.id.includes(":free"));
 
-    // 5. シートに一括書き出し
-    modelListSheet.getRange(2, 1, formattedRows.length, 5).setValues(formattedRows);
-    
-    // 6. フィルタをかけるなどの整形
-    modelListSheet.autoResizeColumns(1, 5);
-    Logger.log("モデルリストを更新しました。合計数: " + formattedRows.length);
+  // ----------------------------------------------------------
+  // 3. シートに書き出し
+  // ----------------------------------------------------------
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  } catch (error) {
-    Logger.log("モデルリストの取得中にエラーが発生しました: " + error.toString());
+  // 既存の「OpenRouter_Models」シートがあれば削除して作り直す
+  let sheet = ss.getSheetByName("OpenRouter_Models");
+  if (sheet) ss.deleteSheet(sheet);
+  sheet = ss.insertSheet("OpenRouter_Models");
+
+  // ヘッダー行を書き込み
+  sheet.getRange(1, 1, 1, 3)
+    .setValues([["モデルID", "モデル名", "コンテキスト長"]])
+    .setFontWeight("bold")             // 太字
+    .setBackground("#f3f3f3");          // 背景を薄灰色に
+
+  // ----------------------------------------------------------
+  // 4. 各モデルのデータを配列として準備
+  // ----------------------------------------------------------
+  const rows = freeModels.map(m => [
+    m.id,                                // モデルID（APIで指定する文字列）
+    m.name,                              // モデル名（人間向けの表示名）
+    m.context_length || "N/A"            // コンテキスト長（最大入力トークン数）
+  ]);
+
+  // ----------------------------------------------------------
+  // 5. データをシートに一括書き込み
+  // ----------------------------------------------------------
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, 3).setValues(rows);
   }
+
+  // 列幅を自動調整して見やすくする
+  sheet.autoResizeColumns(1, 3);
+
+  // 結果をログに出力（スクリプトエディタの「実行ログ」で確認）
+  Logger.log(`${rows.length} 件の無料モデルを書き出しました。`);
 }
