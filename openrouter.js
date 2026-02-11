@@ -212,7 +212,7 @@ function _tryModel(model, messages, temp) {
         let json;
         try { json = JSON.parse(responseText); } catch (e) {
           lastErrorDetail = "【⚠️リクエスト不正】レスポンスJSON解析失敗: " + responseText.substring(0, 100);
-          if (attempt < AI_CONFIG.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+          if (attempt < AI_CONFIG.MAX_RETRY) { Utilities.sleep(1000); }
           continue;
         }
         // OpenRouterのトークン数を取得
@@ -223,11 +223,11 @@ function _tryModel(model, messages, temp) {
             return { success: true, text: answer, actualModel: json.model, elapsedMs: elapsedMs, tokens: tokens };
           }
           lastErrorDetail = "【📭空回答】モデルが空の回答を返しました";
-          if (attempt < AI_CONFIG.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+          if (attempt < AI_CONFIG.MAX_RETRY) { Utilities.sleep(1000); }
           continue;
         }
         lastErrorDetail = "【📭空回答】回答データの構造が不正です";
-        if (attempt < AI_CONFIG.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+        if (attempt < AI_CONFIG.MAX_RETRY) { Utilities.sleep(1000); }
         continue;
       }
 
@@ -248,13 +248,13 @@ function _tryModel(model, messages, temp) {
       }
 
       if (attempt < AI_CONFIG.MAX_RETRY) {
-        Utilities.sleep(attempt * 2000);
+        Utilities.sleep(1000);
       }
 
     } catch (e) {
       lastErrorDetail = "【🔌接続エラー】" + e.toString();
       if (attempt < AI_CONFIG.MAX_RETRY) {
-        Utilities.sleep(attempt * 2000);
+        Utilities.sleep(1000);
       }
     }
   }

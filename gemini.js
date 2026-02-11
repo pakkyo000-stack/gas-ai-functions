@@ -118,11 +118,11 @@ function gemn(promptText, systemInstruction = "", model = "gemini-3-flash-previe
             return answer;
           }
           lastError = "【📭空回答】モデルが空の回答を返しました。";
-          if (attempt < GEMN_MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+          if (attempt < GEMN_MAX_RETRY) { Utilities.sleep(1000); }
           continue;
         }
         lastError = "【📭空回答】回答データの構造が不正です。";
-        if (attempt < GEMN_MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+        if (attempt < GEMN_MAX_RETRY) { Utilities.sleep(1000); }
         continue;
       }
 
@@ -145,13 +145,13 @@ function gemn(promptText, systemInstruction = "", model = "gemini-3-flash-previe
 
       // リトライ対象 → 待機して再試行
       if (attempt < GEMN_MAX_RETRY) {
-        Utilities.sleep(attempt * 2000);
+        Utilities.sleep(1000);
       }
 
     } catch (e) {
       lastError = "【🔌接続エラー】" + e.message;
       if (attempt < GEMN_MAX_RETRY) {
-        Utilities.sleep(attempt * 2000);
+        Utilities.sleep(1000);
       }
     }
   }

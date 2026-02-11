@@ -45,24 +45,19 @@ function _getConfig() {
     return {
         GEMINI_API_KEY: props.getProperty('GEMINI_API_KEY'),
         GEMINI_MODELS: [
-            "gemini-3-flash-preview",
-            "gemini-2.5-flash-preview",
-            "gemini-2.0-flash-preview",
-            "gemini-1.5-flash-preview",
-            "gemini-1.5-pro-preview"
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite"
         ],
         OPENROUTER_API_KEY: props.getProperty('OPENROUTER_API_KEY'),
         OPENROUTER_URL: 'https://openrouter.ai/api/v1/chat/completions',
         OPENROUTER_MODELS: [
             "meta-llama/llama-3.3-70b-instruct:free",
             "meta-llama/llama-3.2-3b-instruct:free",
-            "arcee-ai/trinity-large-preview:free",
-            "nvidia/nemotron-3-nano-30b-a3b:free",
-            "tngtech/deepseek-r1t2-chimera:free"
+            "nvidia/nemotron-3-nano-30b-a3b:free"
         ],
         OPENROUTER_FREE_MODEL: "openrouter/free",
         MAX_TOKENS: 1024,
-        MAX_RETRY: 3
+        MAX_RETRY: 2
     };
 }
 
@@ -268,11 +263,11 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
                     if (answer !== "") return { success: true, text: answer, elapsedMs: elapsedMs, tokens: tokens };
                     // 空回答 → リトライ対象
                     lastErrorDetail = "【📭空回答】モデルが空の回答を返しました";
-                    if (attempt < config.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+                    if (attempt < config.MAX_RETRY) { Utilities.sleep(1000); }
                     continue;
                 }
                 lastErrorDetail = "【📭空回答】回答データの構造が不正です";
-                if (attempt < config.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+                if (attempt < config.MAX_RETRY) { Utilities.sleep(1000); }
                 continue;
             }
 
@@ -294,14 +289,14 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
 
             // リトライ対象 → 待機して再試行
             if (attempt < config.MAX_RETRY) {
-                Utilities.sleep(attempt * 2000);
+                Utilities.sleep(1000);
             }
 
         } catch (e) {
             // ネットワーク/接続エラー → リトライ対象
             lastErrorDetail = "【🔌接続エラー】" + e.message;
             if (attempt < config.MAX_RETRY) {
-                Utilities.sleep(attempt * 2000);
+                Utilities.sleep(1000);
             }
         }
     }
@@ -372,7 +367,7 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
                 let json;
                 try { json = JSON.parse(responseText); } catch (e) {
                     lastErrorDetail = "【⚠️リクエスト不正】レスポンスのJSON解析に失敗: " + responseText.substring(0, 100);
-                    if (attempt < config.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+                    if (attempt < config.MAX_RETRY) { Utilities.sleep(1000); }
                     continue;
                 }
                 // OpenRouterのトークン数を取得（usage.total_tokens にある）
@@ -383,11 +378,11 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
                         return { success: true, text: answer, actualModel: json.model, elapsedMs: elapsedMs, tokens: tokens };
                     }
                     lastErrorDetail = "【📭空回答】モデルが空の回答を返しました";
-                    if (attempt < config.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+                    if (attempt < config.MAX_RETRY) { Utilities.sleep(1000); }
                     continue;
                 }
                 lastErrorDetail = "【📭空回答】回答データの構造が不正です";
-                if (attempt < config.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+                if (attempt < config.MAX_RETRY) { Utilities.sleep(1000); }
                 continue;
             }
 
@@ -408,13 +403,13 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
             }
 
             if (attempt < config.MAX_RETRY) {
-                Utilities.sleep(attempt * 2000);
+                Utilities.sleep(1000);
             }
 
         } catch (e) {
             lastErrorDetail = "【🔌接続エラー】" + e.toString();
             if (attempt < config.MAX_RETRY) {
-                Utilities.sleep(attempt * 2000);
+                Utilities.sleep(1000);
             }
         }
     }
