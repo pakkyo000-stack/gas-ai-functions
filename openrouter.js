@@ -133,31 +133,7 @@ function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
   // 試行結果を記録する配列（最終エラーサマリー用）
   const trialLog = [];
 
-  // 入力チェック
-  if (!promptText) return "【通知】質問を入力してください。";
-  if (!AI_CONFIG.API_KEY) return "【🔑APIキー未設定】OPENROUTER_API_KEY をプロジェクト設定 > スクリプトプロパティで登録してください。";
 
-  // メッセージ組み立て
-  const messages = [];
-  if (systemInst) messages.push({ role: "system", content: systemInst });
-  if (fewShotRange && Array.isArray(fewShotRange)) {
-    fewShotRange.forEach(row => {
-      if (row[0] && row[1]) {
-        messages.push({ role: "user", content: "Ex: " + row[0] });
-        messages.push({ role: "assistant", content: "Ans: " + row[1] });
-      }
-    });
-  }
-  if (historyRange && Array.isArray(historyRange)) {
-    historyRange.forEach(row => {
-      if (row[0]) messages.push({ role: "user", content: row[0].toString() });
-      if (row[1]) messages.push({ role: "assistant", content: row[1].toString() });
-    });
-  }
-  messages.push({ role: "user", content: promptText });
-
-  // 試行結果を記録する配列（最終エラーサマリー用）
-  const trialLog = [];
 
   // 【パターンB】リストの上から順番に試す
   for (const model of AI_CONFIG.MODELS) {
