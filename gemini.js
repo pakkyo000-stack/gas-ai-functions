@@ -4,6 +4,11 @@
 // このファイルは、Google の Gemini API だけを使って
 // AIに質問する「gemn」関数を提供します。
 //
+// 【動作の流れ】
+//  1. Gemini API に1回リクエスト（最大3回リトライ）
+//  2. リトライ不要エラー (400/401/403/404) は即リターン
+//  3. 429/5xx/接続エラーは待機して再試行
+//
 // 【エラー時の戻り値プレフィックス】
 //  🔑APIキー未設定  → スクリプトプロパティにキーがない
 //  🔑認証エラー     → APIキーが無効・期限切れ (401/403)
@@ -19,6 +24,9 @@
 //  =gemn("質問","役割を指定")                       ← システム指示付き
 //  =gemn("質問","","gemini-2.0-flash-preview")     ← モデル指定
 // ============================================================
+
+/** リトライ回数 */
+const GEMN_MAX_RETRY = 3;
 
 
 // ============================================================
@@ -38,24 +46,24 @@ function testgemini() {
 // ============================================================
 function _classifyHttpError_Gemini(statusCode) {
   switch (statusCode) {
-    case 400: return "【⚠️リクエスト不正】";
-    case 401: return "【🔑認証エラー】";
-    case 403: return "【🔑認証エラー】";
-    case 404: return "【❌モデル不明】";
-    case 429: return "【⏳レート制限】";
-    case 500: return "【💔サーバーエラー】";
-    case 502: return "【💔サーバーエラー】";
-    case 503: return "【💔サーバーエラー】";
-    default: return "【⚠️HTTPエラー(" + statusCode + ")】";
+    case 400: return { prefix: "【⚠️リクエスト不正】", shouldRetry: false };
+    case 401: return { prefix: "【🔑認証エラー】", shouldRetry: false };
+    case 403: return { prefix: "【🔑認証エラー】", shouldRetry: false };
+    case 404: return { prefix: "【❌モデル不明】", shouldRetry: false };
+    case 429: return { prefix: "【⏳レート制限】", shouldRetry: true };
+    case 500: return { prefix: "【💔サーバーエラー】", shouldRetry: true };
+    case 502: return { prefix: "【💔サーバーエラー】", shouldRetry: true };
+    case 503: return { prefix: "【💔サーバーエラー】", shouldRetry: true };
+    default: return { prefix: "【⚠️HTTPエラー(" + statusCode + ")】", shouldRetry: true };
   }
 }
 
 
 // ============================================================
-// メイン関数: gemn
+// メイン関数: gemn（リトライ付き）
 // ============================================================
 /**
- * Gemini API を呼び出してテキスト回答を取得する
+ * Gemini API を呼び出してテキスト回答を取得する（最大3回リトライ）
  *
  * @param {string} promptText        ユーザーのプロンプト（必須）
  * @param {string} systemInstruction システム指示（任意）
@@ -85,35 +93,70 @@ function gemn(promptText, systemInstruction = "", model = "gemini-3-flash-previe
     muteHttpExceptions: true
   };
 
-  try {
-    const response = UrlFetchApp.fetch(URL, options);
-    const responseCode = response.getResponseCode();
-    const responseText = response.getContentText();
+  // ----------------------------------------------------------
+  // リトライループ（最大 GEMN_MAX_RETRY 回）
+  // ----------------------------------------------------------
+  let lastError = "";
 
-    // -- 成功 (200) --
-    if (responseCode === 200) {
-      const json = JSON.parse(responseText);
-      if (json.candidates && json.candidates[0] && json.candidates[0].content) {
-        const answer = json.candidates[0].content.parts[0].text;
-        if (answer && answer.trim() !== "") return answer;
-        return "【📭空回答】モデルが空の回答を返しました。質問を変えて再試行してください。";
-      }
-      return "【📭空回答】回答データの構造が不正です。";
-    }
-
-    // -- エラー応答 → コード別に分類 --
-    const prefix = _classifyHttpError_Gemini(responseCode);
-    let apiMsg = "";
+  for (let attempt = 1; attempt <= GEMN_MAX_RETRY; attempt++) {
+    const startTime = Date.now();
     try {
-      const errorJson = JSON.parse(responseText);
-      apiMsg = errorJson.error ? errorJson.error.message : responseText.substring(0, 150);
+      const response = UrlFetchApp.fetch(URL, options);
+      const elapsedMs = Date.now() - startTime;
+      const responseCode = response.getResponseCode();
+      const responseText = response.getContentText();
+
+      // -- 成功 (200) --
+      if (responseCode === 200) {
+        const json = JSON.parse(responseText);
+        const tokens = (json.usageMetadata && json.usageMetadata.totalTokenCount) || 0;
+        if (json.candidates && json.candidates[0] && json.candidates[0].content) {
+          const answer = json.candidates[0].content.parts[0].text;
+          if (answer && answer.trim() !== "") {
+            // ログ記録（応答時間+トークン数付き）
+            _logAIUsage(model, promptText, "成功", "Gemini(単体)", elapsedMs, tokens);
+            return answer;
+          }
+          lastError = "【📭空回答】モデルが空の回答を返しました。";
+          if (attempt < GEMN_MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+          continue;
+        }
+        lastError = "【📭空回答】回答データの構造が不正です。";
+        if (attempt < GEMN_MAX_RETRY) { Utilities.sleep(attempt * 2000); }
+        continue;
+      }
+
+      // -- エラー応答 → コード別に分類 --
+      const classification = _classifyHttpError_Gemini(responseCode);
+      let apiMsg = "";
+      try {
+        const errorJson = JSON.parse(responseText);
+        apiMsg = errorJson.error ? errorJson.error.message : responseText.substring(0, 150);
+      } catch (e) {
+        apiMsg = responseText.substring(0, 150);
+      }
+      lastError = classification.prefix + apiMsg;
+
+      // リトライ不要のエラー → 即リターン
+      if (!classification.shouldRetry) {
+        _logAIUsage(model, promptText, lastError, "Gemini(単体)", Date.now() - startTime, 0);
+        return lastError;
+      }
+
+      // リトライ対象 → 待機して再試行
+      if (attempt < GEMN_MAX_RETRY) {
+        Utilities.sleep(attempt * 2000);
+      }
+
     } catch (e) {
-      apiMsg = responseText.substring(0, 150);
+      lastError = "【🔌接続エラー】" + e.message;
+      if (attempt < GEMN_MAX_RETRY) {
+        Utilities.sleep(attempt * 2000);
+      }
     }
-
-    return prefix + apiMsg;
-
-  } catch (e) {
-    return "【🔌接続エラー】" + e.message;
   }
+
+  // 全リトライ失敗
+  _logAIUsage(model, promptText, lastError, "Gemini(単体)", 0, 0);
+  return lastError;
 }

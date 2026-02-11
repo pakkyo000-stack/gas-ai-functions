@@ -21,11 +21,14 @@
 //  📭空回答         → APIは成功だが回答が空
 //  💀全API失敗      → すべてのモデル・手段が失敗
 //
+// 【showModel=TRUE 時の表示例】
+//  【gemini-3-flash-preview | 128tok | 1.2s】
+//
 // 【使い方の例（スプレッドシートから）】
 //  =askAI("こんにちは")                     ← 最小構成
 //  =askAI("質問","先生として回答")           ← 役割を指定
 //  =askAI("質問","先生",0.5)               ← 温度(創造性)も指定
-//  =askAI("質問",,,,TRUE)                  ← モデル名表示あり（カンマ4個）
+//  =askAI("質問",,,,TRUE)                  ← モデル名+トークン数+応答時間を表示
 //
 // 【他の関数との違い】
 //  - askAI  : Gemini優先 → OpenRouterフォールバック（最も信頼性が高い）
@@ -95,6 +98,18 @@ function _classifyHttpError(statusCode) {
 
 
 // ============================================================
+// showModel 表示ヘルパー
+// ============================================================
+// 「【モデル名 | 128tok | 1.2s】」形式のヘッダーを生成
+// ============================================================
+function _formatModelHeader(modelName, tokens, elapsedMs) {
+    const tokStr = tokens ? tokens + "tok" : "?tok";
+    const secStr = elapsedMs ? (elapsedMs / 1000).toFixed(1) + "s" : "?s";
+    return "【" + modelName + " | " + tokStr + " | " + secStr + "】";
+}
+
+
+// ============================================================
 // 2. メインの AI 関数: askAI
 // ============================================================
 /**
@@ -106,7 +121,7 @@ function _classifyHttpError(statusCode) {
  * @param {number}  temp        温度 0.0〜2.0 (初期値 0.3)
  * @param {Range}   fewShotRange 例示の範囲 [入力例, 出力例] (任意)
  * @param {Range}   historyRange 過去の対話範囲 [自分, AI] (任意)
- * @param {boolean} showModel   使用されたモデル名を表示するか (初期値: false)
+ * @param {boolean} showModel   使用モデル名+トークン数+応答時間を表示するか (初期値: false)
  * @customfunction
  */
 function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showModel) {
@@ -140,8 +155,8 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
         const result = _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, model, config);
         if (result.success) {
             _setCachedAnswer(cacheKey, result.text);
-            _logAIUsage(model, promptText, "成功", "Gemini");
-            return showModel ? "【" + model + "】\n" + result.text : result.text;
+            _logAIUsage(model, promptText, "成功", "Gemini", result.elapsedMs, result.tokens);
+            return showModel ? _formatModelHeader(model, result.tokens, result.elapsedMs) + "\n" + result.text : result.text;
         }
         trialLog.push(`Gemini(${model}): ${result.errorDetail}`);
         console.warn(`【Gemini失敗】${model}: ${result.errorDetail}`);
@@ -154,9 +169,10 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
         for (const model of config.OPENROUTER_MODELS) {
             const result = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, model);
             if (result.success) {
+                const displayModel = result.actualModel || model;
                 _setCachedAnswer(cacheKey, result.text);
-                _logAIUsage(result.actualModel || model, promptText, "成功", "OpenRouter");
-                return showModel ? "【" + (result.actualModel || model) + "】\n" + result.text : result.text;
+                _logAIUsage(displayModel, promptText, "成功", "OpenRouter", result.elapsedMs, result.tokens);
+                return showModel ? _formatModelHeader(displayModel, result.tokens, result.elapsedMs) + "\n" + result.text : result.text;
             }
             trialLog.push(`OR(${model}): ${result.errorDetail}`);
             console.warn(`【OpenRouter失敗】${model}: ${result.errorDetail}`);
@@ -170,16 +186,17 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
     const freeResult = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, freeModel);
 
     if (freeResult.success) {
+        const displayModel = freeResult.actualModel || freeModel;
         _setCachedAnswer(cacheKey, freeResult.text);
-        _logAIUsage(freeResult.actualModel || freeModel, promptText, "成功(Free)", "OpenRouter");
-        return showModel ? "【" + (freeResult.actualModel || freeModel) + "】\n" + freeResult.text : freeResult.text;
+        _logAIUsage(displayModel, promptText, "成功(Free)", "OpenRouter", freeResult.elapsedMs, freeResult.tokens);
+        return showModel ? _formatModelHeader(displayModel, freeResult.tokens, freeResult.elapsedMs) + "\n" + freeResult.text : freeResult.text;
     }
     trialLog.push(`OR(Free): ${freeResult.errorDetail}`);
 
     // ----------------------------------------------------------
     // 全滅 → 試行結果のサマリーを返す
     // ----------------------------------------------------------
-    _logAIUsage("N/A", promptText, "全API失敗", "N/A");
+    _logAIUsage("N/A", promptText, "全API失敗", "N/A", 0, 0);
     return "【💀全API失敗】\n" + trialLog.join("\n");
 }
 
@@ -188,7 +205,7 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
 // 3. Gemini API 呼び出し（内部関数）
 // ============================================================
 // 戻り値:
-//   成功時: { success: true,  text: "回答" }
+//   成功時: { success: true,  text: "回答", elapsedMs: 数値, tokens: 数値 }
 //   失敗時: { success: false, errorDetail: "分類済みエラー文" }
 // ============================================================
 function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, model, config) {
@@ -234,17 +251,21 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
     let lastErrorDetail = "";
 
     for (let attempt = 1; attempt <= config.MAX_RETRY; attempt++) {
+        const startTime = Date.now();
         try {
             const response = UrlFetchApp.fetch(URL, options);
+            const elapsedMs = Date.now() - startTime;
             const responseCode = response.getResponseCode();
             const responseText = response.getContentText();
 
             // -- 成功 (200) --
             if (responseCode === 200) {
                 const json = JSON.parse(responseText);
+                // Geminiのトークン数を取得（usageMetadata にある）
+                const tokens = (json.usageMetadata && json.usageMetadata.totalTokenCount) || 0;
                 if (json.candidates && json.candidates[0] && json.candidates[0].content) {
                     const answer = json.candidates[0].content.parts[0].text.trim();
-                    if (answer !== "") return { success: true, text: answer };
+                    if (answer !== "") return { success: true, text: answer, elapsedMs: elapsedMs, tokens: tokens };
                     // 空回答 → リトライ対象
                     lastErrorDetail = "【📭空回答】モデルが空の回答を返しました";
                     if (attempt < config.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
@@ -293,7 +314,7 @@ function _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, m
 // 4. OpenRouter API 呼び出し（内部関数）
 // ============================================================
 // 戻り値:
-//   成功時: { success: true,  text: "回答", actualModel: "モデル名" }
+//   成功時: { success: true, text: "回答", actualModel: "モデル名", elapsedMs: 数値, tokens: 数値 }
 //   失敗時: { success: false, errorDetail: "分類済みエラー文" }
 // ============================================================
 function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, model) {
@@ -339,8 +360,10 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
     let lastErrorDetail = "";
 
     for (let attempt = 1; attempt <= config.MAX_RETRY; attempt++) {
+        const startTime = Date.now();
         try {
             const response = UrlFetchApp.fetch(config.OPENROUTER_URL, options);
+            const elapsedMs = Date.now() - startTime;
             const statusCode = response.getResponseCode();
             const responseText = response.getContentText();
 
@@ -352,10 +375,12 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
                     if (attempt < config.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
                     continue;
                 }
+                // OpenRouterのトークン数を取得（usage.total_tokens にある）
+                const tokens = (json.usage && json.usage.total_tokens) || 0;
                 if (json.choices && json.choices[0] && json.choices[0].message) {
                     const answer = json.choices[0].message.content.trim();
                     if (answer !== "") {
-                        return { success: true, text: answer, actualModel: json.model };
+                        return { success: true, text: answer, actualModel: json.model, elapsedMs: elapsedMs, tokens: tokens };
                     }
                     lastErrorDetail = "【📭空回答】モデルが空の回答を返しました";
                     if (attempt < config.MAX_RETRY) { Utilities.sleep(attempt * 2000); }

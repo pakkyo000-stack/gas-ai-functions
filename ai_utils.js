@@ -8,6 +8,10 @@
 //  1. キャッシュ管理 → 同じ質問の再利用で高速化＆API節約
 //  2. 使用ログ      → AI呼び出しの記録（デバッグ・分析用）
 //
+// 【ログシート「AI_Log」の列構成】
+//  A: 日時  B: モデル  C: ソース  D: ステータス
+//  E: 応答時間(ms)  F: トークン数  G: プロンプト（100文字）
+//
 // 【注意点】
 //  カスタム関数(@customfunction)からはシートを直接編集できないため、
 //  ログは一旦 PropertiesService にバッファリングし、
@@ -92,9 +96,10 @@ function clearAICache() {
 
 
 // ============================================================
-// 2. 使用ログ
+// 2. 使用ログ（応答時間・トークン数対応版）
 // ============================================================
-// AI 関数が呼ばれるたびに、使用モデル・質問・結果を記録する。
+// AI 関数が呼ばれるたびに、使用モデル・質問・結果・応答時間・
+// トークン数を記録する。
 //
 // 【なぜ PropertiesService にバッファリングするのか？】
 //  GAS のカスタム関数（@customfunction）からは SpreadsheetApp の
@@ -103,24 +108,31 @@ function clearAICache() {
 //  後から flushAILog() を手動実行してシートに一括書き出しする。
 // ============================================================
 
+/** ログシートのヘッダー定義（7列） */
+const LOG_HEADERS = ["日時", "モデル", "ソース", "ステータス", "応答時間(ms)", "トークン数", "プロンプト（100文字）"];
+
 /**
  * AI使用ログを記録（バッファに追加）
  * カスタム関数からでも安全に呼び出せる。
  *
- * @param {string} model  使用モデル名 (例: "gemini-2.0-flash-preview")
- * @param {string} prompt 質問テキスト（先頭100文字のみ保存）
- * @param {string} status 結果 ("成功" / "全API失敗" など)
- * @param {string} source ソース ("Gemini" / "OpenRouter" / "N/A")
+ * @param {string} model     使用モデル名 (例: "gemini-2.0-flash-preview")
+ * @param {string} prompt    質問テキスト（先頭100文字のみ保存）
+ * @param {string} status    結果 ("成功" / "全API失敗" など)
+ * @param {string} source    ソース ("Gemini" / "OpenRouter" / "N/A")
+ * @param {number} elapsedMs 応答時間（ミリ秒）。不明なら 0
+ * @param {number} tokens    使用トークン数。不明なら 0
  */
-function _logAIUsage(model, prompt, status, source) {
+function _logAIUsage(model, prompt, status, source, elapsedMs, tokens) {
     try {
         // ログエントリを JSON 文字列として作成
         const entry = JSON.stringify({
-            date: new Date().toISOString(),     // 日時（ISO形式）
-            model: model,                        // モデル名
-            source: source,                      // API種別
-            status: status,                      // 成功/失敗
-            prompt: prompt.substring(0, 100)     // 質問（先頭100文字）
+            date: new Date().toISOString(),       // 日時（ISO形式）
+            model: model,                          // モデル名
+            source: source,                        // API種別
+            status: status,                        // 成功/失敗
+            elapsedMs: elapsedMs || 0,             // 応答時間(ms)
+            tokens: tokens || 0,                   // トークン数
+            prompt: prompt.substring(0, 100)       // 質問（先頭100文字）
         });
 
         // 既存のバッファを読み込み
@@ -170,27 +182,27 @@ function flushAILog() {
     if (!logSheet) {
         // シートを新規作成してヘッダー行を設定
         logSheet = ss.insertSheet("AI_Log");
-        logSheet.getRange(1, 1, 1, 5)
-            .setValues([["日時", "モデル", "ソース", "ステータス", "プロンプト（100文字）"]])
+        logSheet.getRange(1, 1, 1, LOG_HEADERS.length)
+            .setValues([LOG_HEADERS])
             .setFontWeight("bold")
             .setBackground("#f3f3f3");
         logSheet.setColumnWidth(1, 160);   // 日時列を広めに
-        logSheet.setColumnWidth(5, 400);   // プロンプト列を広めに
+        logSheet.setColumnWidth(7, 400);   // プロンプト列を広めに
     }
 
     // ----------------------------------------------------------
-    // バッファのデータを2次元配列に変換
+    // バッファのデータを2次元配列に変換（7列）
     // ----------------------------------------------------------
     const rows = buffer.map(raw => {
         const e = JSON.parse(raw);
-        return [e.date, e.model, e.source, e.status, e.prompt];
+        return [e.date, e.model, e.source, e.status, e.elapsedMs || 0, e.tokens || 0, e.prompt];
     });
 
     // ----------------------------------------------------------
     // シートの最終行の次から書き込み（追記）
     // ----------------------------------------------------------
     const lastRow = logSheet.getLastRow();
-    logSheet.getRange(lastRow + 1, 1, rows.length, 5).setValues(rows);
+    logSheet.getRange(lastRow + 1, 1, rows.length, LOG_HEADERS.length).setValues(rows);
 
     // バッファをクリア（書き出し済み）
     props.setProperty('AI_LOG_BUFFER', '[]');
@@ -212,8 +224,8 @@ function clearAILog() {
     if (logSheet) {
         // シートの内容をクリアしてヘッダー行を再設定
         logSheet.clear();
-        logSheet.getRange(1, 1, 1, 5)
-            .setValues([["日時", "モデル", "ソース", "ステータス", "プロンプト（100文字）"]])
+        logSheet.getRange(1, 1, 1, LOG_HEADERS.length)
+            .setValues([LOG_HEADERS])
             .setFontWeight("bold")
             .setBackground("#f3f3f3");
     }

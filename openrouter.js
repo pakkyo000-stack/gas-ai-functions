@@ -22,6 +22,9 @@
 //  📭空回答         → APIは成功だが回答が空
 //  💀全モデル失敗   → すべてのモデル・手段が失敗
 //
+// 【showModel=TRUE 時の表示例】
+//  【meta-llama/llama-3.3-70b-instruct:free | 256tok | 2.3s】
+//
 // 【使い方の例】
 //  =my_AI("こんにちは")                              ← 最小構成
 //  =my_AI("質問","先生として回答")                    ← 役割指定
@@ -55,11 +58,6 @@ const AI_CONFIG = {
 // ============================================================
 // エラー分類ヘルパー（OpenRouter用）
 // ============================================================
-// HTTPステータスコードから エラー種別 と リトライ可否 を判定する。
-// ※ hybrid_ai.js にも同名の関数があるが、GAS では
-//   ファイル間のスコープが共有されるため、こちらは名前を変えて定義。
-//   （実際にはどちらか1つが使われる）
-// ============================================================
 function _classifyHttpError_OR(statusCode) {
   switch (statusCode) {
     case 400: return { prefix: "【⚠️リクエスト不正】", shouldRetry: false };
@@ -76,6 +74,16 @@ function _classifyHttpError_OR(statusCode) {
 
 
 // ============================================================
+// showModel 表示ヘルパー（OpenRouter用）
+// ============================================================
+function _formatModelHeader_OR(modelName, tokens, elapsedMs) {
+  const tokStr = tokens ? tokens + "tok" : "?tok";
+  const secStr = elapsedMs ? (elapsedMs / 1000).toFixed(1) + "s" : "?s";
+  return "【" + modelName + " | " + tokStr + " | " + secStr + "】";
+}
+
+
+// ============================================================
 // 2. メインの AI 関数: my_AI
 // ============================================================
 /**
@@ -88,7 +96,7 @@ function _classifyHttpError_OR(statusCode) {
  * @param {Range}  fewShotRange 例示の範囲 [入力例, 出力例] (任意)
  * @param {Range}  historyRange 過去の対話範囲 [自分, AI] (任意)
  * @param {string} modelId      特定モデルを指定 (省略時はリスト順に自動試行)
- * @param {boolean} showModel   モデル名を表示するか (初期値: false)
+ * @param {boolean} showModel   モデル名+トークン数+応答時間を表示するか (初期値: false)
  * @customfunction
  */
 function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, modelId, showModel) {
@@ -134,7 +142,8 @@ function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, modelId
   if (modelId) {
     const result = _tryModel(modelId, messages, temp);
     if (result.success) {
-      return showModel ? "【" + (result.actualModel || modelId) + "】\n" + result.text : result.text;
+      const displayModel = result.actualModel || modelId;
+      return showModel ? _formatModelHeader_OR(displayModel, result.tokens, result.elapsedMs) + "\n" + result.text : result.text;
     }
     return `【失敗】${modelId}: ${result.errorDetail}`;
   }
@@ -143,7 +152,8 @@ function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, modelId
   for (const model of AI_CONFIG.MODELS) {
     const result = _tryModel(model, messages, temp);
     if (result.success) {
-      return showModel ? "【" + (result.actualModel || model) + "】\n" + result.text : result.text;
+      const displayModel = result.actualModel || model;
+      return showModel ? _formatModelHeader_OR(displayModel, result.tokens, result.elapsedMs) + "\n" + result.text : result.text;
     }
     trialLog.push(`${model}: ${result.errorDetail}`);
     console.warn(`【失敗】${model}: ${result.errorDetail}`);
@@ -152,7 +162,8 @@ function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, modelId
   // 【パターンC】最終手段 openrouter/free
   const freeResult = _tryModel(AI_CONFIG.FREE_MODEL, messages, temp);
   if (freeResult.success) {
-    return showModel ? "【" + (freeResult.actualModel || AI_CONFIG.FREE_MODEL) + "】\n" + freeResult.text : freeResult.text;
+    const displayModel = freeResult.actualModel || AI_CONFIG.FREE_MODEL;
+    return showModel ? _formatModelHeader_OR(displayModel, freeResult.tokens, freeResult.elapsedMs) + "\n" + freeResult.text : freeResult.text;
   }
   trialLog.push(`Free: ${freeResult.errorDetail}`);
 
@@ -168,7 +179,7 @@ function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, modelId
 // リトライ不要なエラー（認証/モデル不明/リクエスト不正）は即リターン。
 //
 // 戻り値:
-//   成功時: { success: true,  text: "回答", actualModel: "モデル名" }
+//   成功時: { success: true, text: "回答", actualModel: "モデル名", elapsedMs: 数値, tokens: 数値 }
 //   失敗時: { success: false, errorDetail: "分類済みエラー文" }
 // ============================================================
 function _tryModel(model, messages, temp) {
@@ -189,8 +200,10 @@ function _tryModel(model, messages, temp) {
   let lastErrorDetail = "";
 
   for (let attempt = 1; attempt <= AI_CONFIG.MAX_RETRY; attempt++) {
+    const startTime = Date.now();
     try {
       const response = UrlFetchApp.fetch(AI_CONFIG.BASE_URL, options);
+      const elapsedMs = Date.now() - startTime;
       const statusCode = response.getResponseCode();
       const responseText = response.getContentText();
 
@@ -202,10 +215,12 @@ function _tryModel(model, messages, temp) {
           if (attempt < AI_CONFIG.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
           continue;
         }
+        // OpenRouterのトークン数を取得
+        const tokens = (json.usage && json.usage.total_tokens) || 0;
         if (json.choices && json.choices[0] && json.choices[0].message) {
           const answer = json.choices[0].message.content.trim();
           if (answer !== "") {
-            return { success: true, text: answer, actualModel: json.model };
+            return { success: true, text: answer, actualModel: json.model, elapsedMs: elapsedMs, tokens: tokens };
           }
           lastErrorDetail = "【📭空回答】モデルが空の回答を返しました";
           if (attempt < AI_CONFIG.MAX_RETRY) { Utilities.sleep(attempt * 2000); }
