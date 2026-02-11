@@ -2,12 +2,12 @@
 // ============================================================
 // OpenRouter AI 関数 (openrouter.js)
 // ============================================================
-// このファイルは、スプレッドシートから「=my_AI("質問")」で
+// このファイルは、スプレッドシートから「=or_AI("質問")」で
 // AIに質問できる関数を提供します。
 //
 // 【動作の流れ】
 //  1. モデルリスト(MODELS)の上から順にAIモデルを試す
-//  2. 各モデルで最大3回リトライする（リトライ不要エラーは即スキップ）
+//  2. 各モデルで最大2回リトライする（リトライ不要エラーは即スキップ）
 //  3. 全モデル失敗時は openrouter/free（自動選択）を最終手段として試す
 //  4. それでもダメならエラーメッセージを返す
 //
@@ -26,11 +26,11 @@
 //  【meta-llama/llama-3.3-70b-instruct:free | 256tok | 2.3s】
 //
 // 【使い方の例】
-//  =my_AI("こんにちは")                              ← 最小構成
-//  =my_AI("質問","先生として回答")                    ← 役割指定
-//  =my_AI("質問","先生として回答",0.5)                ← 温度(創造性)指定
-//  =my_AI("質問",,,,,TRUE)                         ← モデル名表示あり(6番目)
-//  =my_AI("質問","先生",0.5,,,TRUE)                 ← 設定あり + モデル名表示
+//  =or_AI("こんにちは")                              ← 最小構成
+//  =or_AI("質問","先生として回答")                    ← 役割指定
+//  =or_AI("質問","先生として回答",0.5)                ← 温度(創造性)指定
+//  =or_AI("質問",,,,,TRUE)                         ← モデル名表示あり(6番目)
+//  =or_AI("質問","先生",0.5,,,TRUE)                 ← 設定あり + モデル名表示
 // ============================================================
 
 
@@ -50,7 +50,7 @@ const AI_CONFIG = {
   FREE_MODEL: "openrouter/free",
   DEFAULT_MODEL: "openrouter/free",
   MAX_TOKENS: 1024,
-  MAX_RETRY: 3
+  MAX_RETRY: 2
 };
 
 
@@ -83,10 +83,10 @@ function _formatModelHeader_OR(modelName, tokens, elapsedMs) {
 
 
 // ============================================================
-// 2. メインの AI 関数: my_AI
+// 2. メインの AI 関数: or_AI
 // ============================================================
 /**
- * カスタムAI関数: my_AI
+ * カスタムAI関数: or_AI
  * モデルリストを上から順に試行し、最終手段として openrouter/free にフォールバック。
  *
  * @param {string} promptText   今回の質問 (必須)
@@ -97,7 +97,7 @@ function _formatModelHeader_OR(modelName, tokens, elapsedMs) {
  * @param {boolean} showModel   モデル名+トークン数+応答時間を表示するか (初期値: false)
  * @customfunction
  */
-function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, showModel) {
+function or_AI(promptText, systemInst, temp, fewShotRange, historyRange, showModel) {
 
   // 引数の補正処理
   systemInst = systemInst || "";

@@ -1,12 +1,12 @@
 // ============================================================
 // AI 便利ツール関数 (ai_tools.js)
 // ============================================================
-// このファイルは、askAI をベースにした便利なショートカット関数群です。
-// どの関数も内部で askAI（hybrid_ai.js）を呼び出しています。
+// このファイルは、hy_AI をベースにした便利なショートカット関数群です。
+// どの関数も内部で hy_AI（hybrid_ai.js）を呼び出しています。
 //
 // 【提供する関数一覧】
 //  - translateAI : テキスト翻訳
-//  - askAI_JSON  : JSON形式で回答取得
+//  - hy_AI_JSON  : JSON形式で回答取得
 //  - batchAI     : 複数データの一括処理
 //  - formatAI    : 出力形式(リスト/表/短文/詳細)を指定
 //  - summarizeAI : テキスト要約
@@ -54,12 +54,12 @@ function translateAI(text, targetLang = "ja", sourceLang = "") {
     const systemInst = `あなたは正確で自然な翻訳者です。入力されたテキストを${targetName}に翻訳してください${sourceHint}。翻訳結果のみを出力し、説明や補足は不要です。`;
 
     // 温度を低め(0.1)に設定して正確な翻訳を促す
-    return askAI(text, systemInst, 0.1);
+    return hy_AI(text, systemInst, 0.1);
 }
 
 
 // ============================================================
-// 2. JSON出力関数: askAI_JSON
+// 2. JSON出力関数: hy_AI_JSON
 // ============================================================
 // AIの回答をJSON形式で取得する。
 // データ構造化やAPI連携用途に便利。
@@ -72,7 +72,7 @@ function translateAI(text, targetLang = "ja", sourceLang = "") {
  * @param {string} systemInst 追加のシステム指示 (任意)
  * @customfunction
  */
-function askAI_JSON(promptText, systemInst = "") {
+function hy_AI_JSON(promptText, systemInst = "") {
     if (!promptText) return "【通知】質問を入力してください。";
 
     // JSON形式で回答するようシステム指示に追加
@@ -80,7 +80,7 @@ function askAI_JSON(promptText, systemInst = "") {
         "回答は必ず有効なJSON形式のみで出力してください。マークダウンのコードブロック（```）は使わないでください。説明文やコメントは含めないでください。";
 
     // 温度を低め(0.2)に設定して正確なJSON出力を促す
-    const result = askAI(promptText, jsonSystemInst, 0.2);
+    const result = hy_AI(promptText, jsonSystemInst, 0.2);
 
     // ----------------------------------------------------------
     // JSON文字列のクリーニング
@@ -129,7 +129,7 @@ function batchAI(dataRange, instruction, systemInst = "") {
 ---
 ${numberedList}`;
 
-    return askAI(batchPrompt, systemInst, 0.3);
+    return hy_AI(batchPrompt, systemInst, 0.3);
 }
 
 
@@ -168,7 +168,7 @@ function formatAI(promptText, format = "list", systemInst = "") {
     // ユーザーのシステム指示 + フォーマット指示を合成
     const fullSystemInst = (systemInst ? systemInst + "\n\n" : "") + formatHint;
 
-    return askAI(promptText, fullSystemInst, 0.3);
+    return hy_AI(promptText, fullSystemInst, 0.3);
 }
 
 
@@ -191,7 +191,7 @@ function summarizeAI(text, maxChars = 200) {
     const systemInst = `あなたは要約の専門家です。入力されたテキストを${maxChars}文字以内で要約してください。要約のみを出力し、前置きや補足は不要です。`;
 
     // 温度を低め(0.2)に設定して正確な要約を促す
-    return askAI(text, systemInst, 0.2);
+    return hy_AI(text, systemInst, 0.2);
 }
 
 // Last Updated: 2026-02-11

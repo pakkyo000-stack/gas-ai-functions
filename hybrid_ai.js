@@ -2,7 +2,7 @@
 // ハイブリッド AI 関数 (hybrid_ai.js)
 // ============================================================
 // このファイルは、Google の Gemini API と OpenRouter API を
-// 組み合わせて使う「askAI」関数を提供します。
+// 組み合わせて使う「hy_AI」関数を提供します。
 //
 // 【動作の流れ】
 //  1. まず Gemini のモデルを上から順に試す
@@ -25,15 +25,15 @@
 //  【gemini-3-flash-preview | 128tok | 1.2s】
 //
 // 【使い方の例（スプレッドシートから）】
-//  =askAI("こんにちは")                     ← 最小構成
-//  =askAI("質問","先生として回答")           ← 役割を指定
-//  =askAI("質問","先生",0.5)               ← 温度(創造性)も指定
-//  =askAI("質問",,,,,TRUE)                  ← モデル名+トークン数+応答時間を表示
+//  =hy_AI("こんにちは")                     ← 最小構成
+//  =hy_AI("質問","先生として回答")           ← 役割を指定
+//  =hy_AI("質問","先生",0.5)               ← 温度(創造性)も指定
+//  =hy_AI("質問",,,,,TRUE)                  ← モデル名+トークン数+応答時間を表示
 //
 // 【他の関数との違い】
-//  - askAI  : Gemini優先 → OpenRouterフォールバック（最も信頼性が高い）
-//  - my_AI  : OpenRouterのみ（openrouter.js）
-//  - gemn   : Geminiのみ（gemini.js）
+//  - hy_AI  : Gemini優先 → OpenRouterフォールバック（最も信頼性が高い）
+//  - or_AI  : OpenRouterのみ（openrouter.js）
+//  - ge_AI   : Geminiのみ（gemini.js）
 // ============================================================
 
 
@@ -107,10 +107,10 @@ function _formatModelHeader(modelName, tokens, elapsedMs) {
 
 
 // ============================================================
-// 2. メインの AI 関数: askAI
+// 2. メインの AI 関数: hy_AI
 // ============================================================
 /**
- * ハイブリッドAI関数: askAI
+ * ハイブリッドAI関数: hy_AI
  * Gemini API → OpenRouter → OpenRouter Free の順でフォールバック
  *
  * @param {string}  promptText  今回の質問 (必須)
@@ -121,7 +121,7 @@ function _formatModelHeader(modelName, tokens, elapsedMs) {
  * @param {boolean} showModel   使用モデル名+トークン数+応答時間を表示するか (初期値: false)
  * @customfunction
  */
-function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showModel) {
+function hy_AI(promptText, systemInst, temp, fewShotRange, historyRange, showModel) {
     const config = _getHybridConfig();
 
     // 引数の補正処理

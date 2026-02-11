@@ -2,7 +2,7 @@
 // Gemini API 単体関数 (gemini.js)
 // ============================================================
 // このファイルは、Google の Gemini API だけを使って
-// AIに質問する「gemn」関数を提供します。
+// AIに質問する「ge_AI」関数を提供します。
 //
 // 【動作の流れ】
 //  1. 指定されたモデル（またはデフォルト）を最初に試す
@@ -22,9 +22,9 @@
 //  💀全API失敗      → すべてのモデルが失敗
 //
 // 【使い方の例（スプレッドシートから）】
-//  =gemn("こんにちは")                              ← 最小構成
-//  =gemn("質問","役割を指定")                       ← システム指示付き
-//  =gemn("質問","","gemini-2.0-flash")             ← モデル指定
+//  =ge_AI("こんにちは")                              ← 最小構成
+//  =ge_AI("質問","役割を指定")                       ← システム指示付き
+//  =ge_AI("質問","","gemini-2.0-flash")             ← モデル指定
 // ============================================================
 
 /** リトライ回数 (GAS 30秒制限を考慮して2回に制限) */
@@ -43,7 +43,7 @@ const GEMINI_MODELS = [
 // テスト関数（スクリプトエディタから実行して動作確認用）
 // ============================================================
 function testgemini() {
-  var result = gemn(
+  var result = ge_AI(
     "【post】【response】",
     "あなたは世界一優秀な日本語と英語の講師です。【】で区切られた英単語を使用した英文とその日本語訳と文法の解説をしてください"
   );
@@ -68,7 +68,7 @@ function _classifyHttpError_Gemini(statusCode) {
 }
 
 // ============================================================
-// メイン関数: gemn（フォールバック付き）
+// メイン関数: ge_AI（フォールバック付き）
 // ============================================================
 /**
  * Gemini API を呼び出してテキスト回答を取得する
@@ -80,7 +80,7 @@ function _classifyHttpError_Gemini(statusCode) {
  * @return {string} AIの回答テキスト
  * @customfunction
  */
-function gemn(promptText, systemInstruction = "", primaryModel = "gemini-3-flash-preview") {
+function ge_AI(promptText, systemInstruction = "", primaryModel = "gemini-3-flash-preview") {
 
   // -- APIキー未設定チェック --
   const API_KEY = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
