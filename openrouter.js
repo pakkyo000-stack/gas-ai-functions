@@ -247,7 +247,7 @@ function _tryModel(model, messages, temp) {
   }
 
   return { success: false, errorDetail: lastErrorDetail };
-  return { success: false, errorDetail: lastErrorDetail };
+
 }
 
 // Last Updated: 2026-02-11
