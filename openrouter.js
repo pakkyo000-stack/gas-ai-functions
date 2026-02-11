@@ -42,11 +42,11 @@ const AI_CONFIG = {
   API_KEY: PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY'),
   BASE_URL: 'https://openrouter.ai/api/v1/chat/completions',
   MODELS: [
+    "stepfun/step-3.5-flash:free",
     "meta-llama/llama-3.3-70b-instruct:free",
-    "meta-llama/llama-3.2-3b-instruct:free",
-    "arcee-ai/trinity-large-preview:free",
-    "nvidia/nemotron-3-nano-30b-a3b:free",
-    "tngtech/deepseek-r1t2-chimera:free"
+    "tngtech/deepseek-r1t2-chimera:free",
+    "google/gemma-3-27b-it:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free"
   ],
   FREE_MODEL: "openrouter/free",
   DEFAULT_MODEL: "openrouter/free",

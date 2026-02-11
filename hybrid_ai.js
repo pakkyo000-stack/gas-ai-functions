@@ -51,11 +51,11 @@ function _getConfig() {
         OPENROUTER_API_KEY: props.getProperty('OPENROUTER_API_KEY'),
         OPENROUTER_URL: 'https://openrouter.ai/api/v1/chat/completions',
         OPENROUTER_MODELS: [
+            "stepfun/step-3.5-flash:free",
             "meta-llama/llama-3.3-70b-instruct:free",
-            "meta-llama/llama-3.2-3b-instruct:free",
-            "arcee-ai/trinity-large-preview:free",
-            "nvidia/nemotron-3-nano-30b-a3b:free",
-            "tngtech/deepseek-r1t2-chimera:free"
+            "tngtech/deepseek-r1t2-chimera:free",
+            "google/gemma-3-27b-it:free",
+            "nvidia/nemotron-3-nano-30b-a3b:free"
         ],
         OPENROUTER_FREE_MODEL: "openrouter/free",
         MAX_TOKENS: 1024,
