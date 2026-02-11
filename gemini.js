@@ -5,9 +5,10 @@
 // AIに質問する「gemn」関数を提供します。
 //
 // 【動作の流れ】
-//  1. Gemini API に1回リクエスト（最大3回リトライ）
-//  2. リトライ不要エラー (400/401/403/404) は即リターン
-//  3. 429/5xx/接続エラーは待機して再試行
+//  1. 指定されたモデル（またはデフォルト）を最初に試す
+//  2. 失敗したら、定義されたフォールバックリスト順に他のGeminiモデルを試す
+//  3. 各モデルで最大2回リトライ（GAS 30秒制限対策）
+//  4. 全モデル失敗でエラーを返す
 //
 // 【エラー時の戻り値プレフィックス】
 //  🔑APIキー未設定  → スクリプトプロパティにキーがない
@@ -18,16 +19,25 @@
 //  💔サーバーエラー → API側の障害 (500/502/503)
 //  🔌接続エラー     → ネットワーク障害
 //  📭空回答         → APIは成功だが回答が空
+//  💀全API失敗      → すべてのモデルが失敗
 //
 // 【使い方の例（スプレッドシートから）】
 //  =gemn("こんにちは")                              ← 最小構成
 //  =gemn("質問","役割を指定")                       ← システム指示付き
-//  =gemn("質問","","gemini-2.0-flash-preview")     ← モデル指定
+//  =gemn("質問","","gemini-2.0-flash")             ← モデル指定
 // ============================================================
 
-/** リトライ回数 */
-const GEMN_MAX_RETRY = 3;
+/** リトライ回数 (GAS 30秒制限を考慮して2回に制限) */
+const GEMN_MAX_RETRY = 2;
 
+/** フォールバック用モデルリスト（優先順位順） */
+const GEMINI_MODELS = [
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash-lite"
+];
 
 // ============================================================
 // テスト関数（スクリプトエディタから実行して動作確認用）
@@ -39,7 +49,6 @@ function testgemini() {
   );
   Logger.log("FINAL OUTPUT: " + result);
 }
-
 
 // ============================================================
 // エラー分類ヘルパー（Gemini用）
@@ -58,26 +67,60 @@ function _classifyHttpError_Gemini(statusCode) {
   }
 }
 
-
 // ============================================================
-// メイン関数: gemn（リトライ付き）
+// メイン関数: gemn（フォールバック付き）
 // ============================================================
 /**
- * Gemini API を呼び出してテキスト回答を取得する（最大3回リトライ）
+ * Gemini API を呼び出してテキスト回答を取得する
+ * 指定モデル → フォールバックリストの順に試行
  *
  * @param {string} promptText        ユーザーのプロンプト（必須）
  * @param {string} systemInstruction システム指示（任意）
- * @param {string} model             モデル名（初期値: gemini-3-flash-preview）
+ * @param {string} primaryModel      最初に試すモデル名（初期値: gemini-3-flash-preview）
  * @return {string} AIの回答テキスト
  * @customfunction
  */
-function gemn(promptText, systemInstruction = "", model = "gemini-3-flash-preview") {
+function gemn(promptText, systemInstruction = "", primaryModel = "gemini-3-flash-preview") {
 
   // -- APIキー未設定チェック --
   const API_KEY = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!API_KEY) return "【🔑APIキー未設定】GEMINI_API_KEY をプロジェクト設定 > スクリプトプロパティで登録してください。";
 
-  const URL = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+  // 試行するモデルリストを作成（重複除外）
+  let candidateModels = [primaryModel];
+  for (const m of GEMINI_MODELS) {
+    if (m !== primaryModel) {
+      candidateModels.push(m);
+    }
+  }
+
+  const trialLog = []; // エラーログ記録用
+
+  // モデル順次試行ループ
+  for (const model of candidateModels) {
+    const result = _callGeminiAPI(promptText, systemInstruction, model, API_KEY);
+
+    if (result.success) {
+      if (model !== primaryModel) {
+        console.warn(`【Geminiフォールバック成功】${primaryModel} 失敗 -> ${model} で成功`);
+      }
+      return result.text;
+    }
+
+    // 失敗時ログ
+    trialLog.push(`${model}: ${result.errorDetail}`);
+    console.warn(`【Gemini失敗】${model}: ${result.errorDetail}`);
+  }
+
+  // 全滅
+  return "【💀全API失敗】\n" + trialLog.join("\n");
+}
+
+// ============================================================
+// 内部関数: 単一モデル呼び出し（リトライ付き）
+// ============================================================
+function _callGeminiAPI(promptText, systemInstruction, model, apiKey) {
+  const URL = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const payload = {
     contents: [{ role: "user", parts: [{ text: promptText }] }],
@@ -93,9 +136,6 @@ function gemn(promptText, systemInstruction = "", model = "gemini-3-flash-previe
     muteHttpExceptions: true
   };
 
-  // ----------------------------------------------------------
-  // リトライループ（最大 GEMN_MAX_RETRY 回）
-  // ----------------------------------------------------------
   let lastError = "";
 
   for (let attempt = 1; attempt <= GEMN_MAX_RETRY; attempt++) {
@@ -108,25 +148,32 @@ function gemn(promptText, systemInstruction = "", model = "gemini-3-flash-previe
 
       // -- 成功 (200) --
       if (responseCode === 200) {
-        const json = JSON.parse(responseText);
+        let json;
+        try {
+          json = JSON.parse(responseText);
+        } catch (e) {
+          lastError = "【⚠️JSON解析エラー】";
+          if (attempt < GEMN_MAX_RETRY) Utilities.sleep(1000);
+          continue;
+        }
+
         const tokens = (json.usageMetadata && json.usageMetadata.totalTokenCount) || 0;
         if (json.candidates && json.candidates[0] && json.candidates[0].content) {
           const answer = json.candidates[0].content.parts[0].text;
           if (answer && answer.trim() !== "") {
-            // ログ記録（応答時間+トークン数付き）
             _logAIUsage(model, promptText, "成功", "Gemini(単体)", elapsedMs, tokens);
-            return answer;
+            return { success: true, text: answer };
           }
           lastError = "【📭空回答】モデルが空の回答を返しました。";
-          if (attempt < GEMN_MAX_RETRY) { Utilities.sleep(1000); }
-          continue;
+        } else {
+          lastError = "【📭空回答】回答データの構造が不正です。";
         }
-        lastError = "【📭空回答】回答データの構造が不正です。";
-        if (attempt < GEMN_MAX_RETRY) { Utilities.sleep(1000); }
+
+        if (attempt < GEMN_MAX_RETRY) Utilities.sleep(1000);
         continue;
       }
 
-      // -- エラー応答 → コード別に分類 --
+      // -- エラー応答 --
       const classification = _classifyHttpError_Gemini(responseCode);
       let apiMsg = "";
       try {
@@ -137,26 +184,18 @@ function gemn(promptText, systemInstruction = "", model = "gemini-3-flash-previe
       }
       lastError = classification.prefix + apiMsg;
 
-      // リトライ不要のエラー → 即リターン
       if (!classification.shouldRetry) {
-        _logAIUsage(model, promptText, lastError, "Gemini(単体)", Date.now() - startTime, 0);
-        return lastError;
+        return { success: false, errorDetail: lastError };
       }
 
-      // リトライ対象 → 待機して再試行
-      if (attempt < GEMN_MAX_RETRY) {
-        Utilities.sleep(1000);
-      }
+      if (attempt < GEMN_MAX_RETRY) Utilities.sleep(1000);
 
     } catch (e) {
       lastError = "【🔌接続エラー】" + e.message;
-      if (attempt < GEMN_MAX_RETRY) {
-        Utilities.sleep(1000);
-      }
+      if (attempt < GEMN_MAX_RETRY) Utilities.sleep(1000);
     }
   }
 
-  // 全リトライ失敗
-  _logAIUsage(model, promptText, lastError, "Gemini(単体)", 0, 0);
-  return lastError;
+  return { success: false, errorDetail: lastError };
 }
+
