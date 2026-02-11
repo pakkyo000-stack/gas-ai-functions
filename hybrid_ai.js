@@ -136,8 +136,8 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
 
     if (!promptText) return "【通知】質問を入力してください。";
 
-    // キャッシュチェック
-    const cacheKey = _makeCacheKey(promptText, systemInst, temp);
+    // キャッシュチェック（全パラメータを含めたキーを生成）
+    const cacheKey = _makeCacheKey(promptText, systemInst, temp, fewShotRange, historyRange);
     const cached = _getCachedAnswer(cacheKey);
     if (cached) {
         return showModel ? "【キャッシュ】\n" + cached : cached;

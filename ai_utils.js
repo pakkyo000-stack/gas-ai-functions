@@ -44,7 +44,7 @@ function _getCachedAnswer(key) {
 }
 
 /**
- * AI回答をキャッシュに保存（有効期限: 6時間）
+ * AI回答をキャッシュに保存（有効期限: 1時間）
  *
  * @param {string} key   キャッシュキー（質問のMD5ハッシュ）
  * @param {string} value 回答テキスト
@@ -55,8 +55,9 @@ function _setCachedAnswer(key, value) {
         // CacheService の制限:
         //  - 1エントリの最大サイズ: 100KB
         //  - 最大有効期間: 21600秒（6時間）
+        //  - ここでは1時間（3600秒）に設定
         if (value.length < 100000) {
-            cache.put(key, value, 21600);
+            cache.put(key, value, 3600);
         }
         // 100KB超の回答はキャッシュしない（まれなケース）
     } catch (e) {
@@ -66,17 +67,22 @@ function _setCachedAnswer(key, value) {
 
 /**
  * キャッシュキーを生成
- * 質問文 + システム指示 + 温度 を結合して MD5 ハッシュを計算する。
- * 同じ組み合わせなら同じキーが生成されるため、キャッシュヒットする。
+ * 質問文 + システム指示 + 温度 + 例示 + 履歴 を結合して
+ * MD5 ハッシュを計算する。すべてのパラメータが一致した場合のみ
+ * キャッシュヒットするので、異なるコンテキストの回答が混ざらない。
  *
- * @param {string} prompt     質問文
- * @param {string} systemInst システム指示
- * @param {number} temp       温度
+ * @param {string} prompt       質問文
+ * @param {string} systemInst   システム指示
+ * @param {number} temp         温度
+ * @param {Array}  fewShotRange 例示データ (任意)
+ * @param {Array}  historyRange 会話履歴 (任意)
  * @return {string} MD5ハッシュ文字列（32文字の16進数）
  */
-function _makeCacheKey(prompt, systemInst, temp) {
-    // 入力を "|" で区切って1つの文字列にする
-    const raw = prompt + "|" + systemInst + "|" + temp;
+function _makeCacheKey(prompt, systemInst, temp, fewShotRange, historyRange) {
+    // 全パラメータを "|" で区切って1つの文字列にする
+    const fewShotStr = fewShotRange ? JSON.stringify(fewShotRange) : "";
+    const historyStr = historyRange ? JSON.stringify(historyRange) : "";
+    const raw = prompt + "|" + systemInst + "|" + temp + "|" + fewShotStr + "|" + historyStr;
 
     // MD5ハッシュを計算し、16進数文字列に変換
     return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw)
