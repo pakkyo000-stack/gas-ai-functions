@@ -5,8 +5,7 @@
 // 「裏方」の補助関数をまとめたものです。
 //
 // 【提供する機能】
-//  1. キャッシュ管理 → 同じ質問の再利用で高速化＆API節約
-//  2. 使用ログ      → AI呼び出しの記録（デバッグ・分析用）
+//  1. 使用ログ      → AI呼び出しの記録（デバッグ・分析用）
 //
 // 【ログシート「AI_Log」の列構成】
 //  A: 日時  B: モデル  C: ソース  D: ステータス
@@ -19,86 +18,7 @@
 // ============================================================
 
 
-// ============================================================
-// 1. キャッシュ管理
-// ============================================================
-// GAS の CacheService を使って、AI の回答を一時保存する。
-// 同じ質問が来たときに API を呼ばずに即座に回答を返せる。
-// 有効期限: 6時間（21600秒）
-// ============================================================
 
-/**
- * キャッシュからAI回答を取得
- *
- * @param {string} key キャッシュキー（質問のMD5ハッシュ）
- * @return {string|null} キャッシュされた回答（なければnull）
- */
-function _getCachedAnswer(key) {
-    try {
-        const cache = CacheService.getScriptCache();
-        return cache.get(key);  // キーが存在しなければ null が返る
-    } catch (e) {
-        // キャッシュの取得に失敗しても、メイン処理に影響させない
-        return null;
-    }
-}
-
-/**
- * AI回答をキャッシュに保存（有効期限: 1時間）
- *
- * @param {string} key   キャッシュキー（質問のMD5ハッシュ）
- * @param {string} value 回答テキスト
- */
-function _setCachedAnswer(key, value) {
-    try {
-        const cache = CacheService.getScriptCache();
-        // CacheService の制限:
-        //  - 1エントリの最大サイズ: 100KB
-        //  - 最大有効期間: 21600秒（6時間）
-        //  - ここでは1時間（3600秒）に設定
-        if (value.length < 100000) {
-            cache.put(key, value, 3600);
-        }
-        // 100KB超の回答はキャッシュしない（まれなケース）
-    } catch (e) {
-        console.warn("キャッシュ保存失敗: " + e.message);
-    }
-}
-
-/**
- * キャッシュキーを生成
- * 質問文 + システム指示 + 温度 + 例示 + 履歴 を結合して
- * MD5 ハッシュを計算する。すべてのパラメータが一致した場合のみ
- * キャッシュヒットするので、異なるコンテキストの回答が混ざらない。
- *
- * @param {string} prompt       質問文
- * @param {string} systemInst   システム指示
- * @param {number} temp         温度
- * @param {Array}  fewShotRange 例示データ (任意)
- * @param {Array}  historyRange 会話履歴 (任意)
- * @return {string} MD5ハッシュ文字列（32文字の16進数）
- */
-function _makeCacheKey(prompt, systemInst, temp, fewShotRange, historyRange) {
-    // 全パラメータを "|" で区切って1つの文字列にする
-    const fewShotStr = fewShotRange ? JSON.stringify(fewShotRange) : "";
-    const historyStr = historyRange ? JSON.stringify(historyRange) : "";
-    const raw = prompt + "|" + systemInst + "|" + temp + "|" + fewShotStr + "|" + historyStr;
-
-    // MD5ハッシュを計算し、16進数文字列に変換
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw)
-        .map(b => ('0' + ((b + 256) % 256).toString(16)).slice(-2))
-        .join('');
-}
-
-/**
- * AIキャッシュを全クリア
- * スクリプトエディタや GAS メニューから手動実行してください。
- * キャッシュが古くなった場合や、動作確認時に使います。
- */
-function clearAICache() {
-    CacheService.getScriptCache().removeAll([]);
-    Logger.log("AIキャッシュをクリアしました");
-}
 
 
 // ============================================================

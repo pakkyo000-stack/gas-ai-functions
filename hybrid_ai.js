@@ -133,12 +133,7 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
 
     if (!promptText) return "【通知】質問を入力してください。";
 
-    // キャッシュチェック（全パラメータを含めたキーを生成）
-    const cacheKey = _makeCacheKey(promptText, systemInst, temp, fewShotRange, historyRange);
-    const cached = _getCachedAnswer(cacheKey);
-    if (cached) {
-        return showModel ? "【キャッシュ】\n" + cached : cached;
-    }
+
 
     // ----------------------------------------------------------
     // 試行結果を記録する配列（最終エラーメッセージ用）
@@ -150,51 +145,49 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
     // ============================================================
     for (const model of config.GEMINI_MODELS) {
         const result = _callGemini(promptText, systemInst, temp, fewShotRange, historyRange, model, config);
+
+        return showModel ? _formatModelHeader(model, result.tokens, result.elapsedMs) + "\n" + result.text : result.text;
+    }
+    trialLog.push(`Gemini(${model}): ${result.errorDetail}`);
+    console.warn(`【Gemini失敗】${model}: ${result.errorDetail}`);
+}
+
+// ============================================================
+// 2. OpenRouter モデル群で試行
+// ============================================================
+if (config.OPENROUTER_MODELS && config.OPENROUTER_MODELS.length > 0) {
+    for (const model of config.OPENROUTER_MODELS) {
+        const result = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, model);
         if (result.success) {
-            _setCachedAnswer(cacheKey, result.text);
-            _logAIUsage(model, promptText, "成功", "Gemini", result.elapsedMs, result.tokens);
-            return showModel ? _formatModelHeader(model, result.tokens, result.elapsedMs) + "\n" + result.text : result.text;
+            const displayModel = result.actualModel || model;
+
+            _logAIUsage(displayModel, promptText, "成功", "OpenRouter", result.elapsedMs, result.tokens);
+            return showModel ? _formatModelHeader(displayModel, result.tokens, result.elapsedMs) + "\n" + result.text : result.text;
         }
-        trialLog.push(`Gemini(${model}): ${result.errorDetail}`);
-        console.warn(`【Gemini失敗】${model}: ${result.errorDetail}`);
+        trialLog.push(`OR(${model}): ${result.errorDetail}`);
+        console.warn(`【OpenRouter失敗】${model}: ${result.errorDetail}`);
     }
+}
 
-    // ============================================================
-    // 2. OpenRouter モデル群で試行
-    // ============================================================
-    if (config.OPENROUTER_MODELS && config.OPENROUTER_MODELS.length > 0) {
-        for (const model of config.OPENROUTER_MODELS) {
-            const result = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, model);
-            if (result.success) {
-                const displayModel = result.actualModel || model;
-                _setCachedAnswer(cacheKey, result.text);
-                _logAIUsage(displayModel, promptText, "成功", "OpenRouter", result.elapsedMs, result.tokens);
-                return showModel ? _formatModelHeader(displayModel, result.tokens, result.elapsedMs) + "\n" + result.text : result.text;
-            }
-            trialLog.push(`OR(${model}): ${result.errorDetail}`);
-            console.warn(`【OpenRouter失敗】${model}: ${result.errorDetail}`);
-        }
-    }
+// ============================================================
+// 3. 最終手段: OpenRouter Free
+// ============================================================
+const freeModel = config.OPENROUTER_FREE_MODEL;
+const freeResult = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, freeModel);
 
-    // ============================================================
-    // 3. 最終手段: OpenRouter Free
-    // ============================================================
-    const freeModel = config.OPENROUTER_FREE_MODEL;
-    const freeResult = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, freeModel);
+if (freeResult.success) {
+    const displayModel = freeResult.actualModel || freeModel;
 
-    if (freeResult.success) {
-        const displayModel = freeResult.actualModel || freeModel;
-        _setCachedAnswer(cacheKey, freeResult.text);
-        _logAIUsage(displayModel, promptText, "成功(Free)", "OpenRouter", freeResult.elapsedMs, freeResult.tokens);
-        return showModel ? _formatModelHeader(displayModel, freeResult.tokens, freeResult.elapsedMs) + "\n" + freeResult.text : freeResult.text;
-    }
-    trialLog.push(`OR(Free): ${freeResult.errorDetail}`);
+    _logAIUsage(displayModel, promptText, "成功(Free)", "OpenRouter", freeResult.elapsedMs, freeResult.tokens);
+    return showModel ? _formatModelHeader(displayModel, freeResult.tokens, freeResult.elapsedMs) + "\n" + freeResult.text : freeResult.text;
+}
+trialLog.push(`OR(Free): ${freeResult.errorDetail}`);
 
-    // ----------------------------------------------------------
-    // 全滅 → 試行結果のサマリーを返す
-    // ----------------------------------------------------------
-    _logAIUsage("N/A", promptText, "全API失敗", "N/A", 0, 0);
-    return "【💀全API失敗】\n" + trialLog.join("\n");
+// ----------------------------------------------------------
+// 全滅 → 試行結果のサマリーを返す
+// ----------------------------------------------------------
+_logAIUsage("N/A", promptText, "全API失敗", "N/A", 0, 0);
+return "【💀全API失敗】\n" + trialLog.join("\n");
 }
 
 
