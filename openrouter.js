@@ -24,7 +24,20 @@ const AI_CONFIG = {
  * @param {boolean} showModel 使用されたモデル名を表示するか (初期値: false)
  * @customfunction
  */
-function my_AI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, historyRange = null, modelId = AI_CONFIG.DEFAULT_MODEL, showModel = false) {
+function my_AI(promptText, systemInst, temp, fewShotRange, historyRange, modelId, showModel) {
+
+  // カスタム関数では空セルが "" で渡されるのでフォールバック処理
+  // また modelId に true/false が来た場合は showModel の指定と判断してシフト
+  if (modelId === true || modelId === false || modelId === "TRUE" || modelId === "FALSE" || modelId === "true" || modelId === "false") {
+    showModel = modelId;
+    modelId = "";
+  }
+  systemInst = systemInst || "";
+  temp = (temp === undefined || temp === null || temp === "") ? 0.3 : Number(temp);
+  fewShotRange = fewShotRange || null;
+  historyRange = historyRange || null;
+  modelId = modelId || AI_CONFIG.DEFAULT_MODEL;
+  showModel = (showModel === true || showModel === "TRUE" || showModel === "true");
 
   if (!promptText) return "【通知】質問を入力してください。";
 
@@ -79,7 +92,7 @@ function my_AI(promptText, systemInst = "", temp = 0.3, fewShotRange = null, his
 
         // 回答が空でなければ、そのまま結果を返して終了
         if (answer !== "") {
-          return showModel ? "【" + modelId + "】\n" + answer : answer;
+          return showModel ? "【" + (json.model || modelId) + "】\n" + answer : answer;
         }
         lastError = "AIの回答が空欄でした";
       } else {

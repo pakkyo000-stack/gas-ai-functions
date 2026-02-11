@@ -95,8 +95,8 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
             const result = _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRange, config, model);
             if (result.success) {
                 _setCachedAnswer(cacheKey, result.text);
-                _logAIUsage(model, promptText, "成功", "OpenRouter");
-                return showModel ? "【" + model + "】\n" + result.text : result.text;
+                _logAIUsage(result.actualModel || model, promptText, "成功", "OpenRouter");
+                return showModel ? "【" + (result.actualModel || model) + "】\n" + result.text : result.text;
             }
             lastError = `OpenRouter(${model}): ${result.error}`;
             console.warn(`【OpenRouter失敗】${model}: ${result.error}`);
@@ -111,8 +111,8 @@ function askAI(promptText, systemInst, temp, fewShotRange, historyRange, showMod
 
     if (freeResult.success) {
         _setCachedAnswer(cacheKey, freeResult.text);
-        _logAIUsage(freeModel, promptText, "成功(Free)", "OpenRouter");
-        return showModel ? "【" + freeModel + "】\n" + freeResult.text : freeResult.text;
+        _logAIUsage(freeResult.actualModel || freeModel, promptText, "成功(Free)", "OpenRouter");
+        return showModel ? "【" + (freeResult.actualModel || freeModel) + "】\n" + freeResult.text : freeResult.text;
     }
 
     // 全滅
@@ -263,7 +263,7 @@ function _callOpenRouter(promptText, systemInst, temp, fewShotRange, historyRang
 
             if (statusCode === 200 && json.choices && json.choices[0]) {
                 const answer = json.choices[0].message.content.trim();
-                if (answer !== "") return { success: true, text: answer };
+                if (answer !== "") return { success: true, text: answer, actualModel: json.model };
             }
 
             const errorMsg = json.error ? json.error.message : "ステータスコード: " + statusCode;
