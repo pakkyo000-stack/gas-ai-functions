@@ -45,15 +45,17 @@ function _getConfig() {
     return {
         GEMINI_API_KEY: props.getProperty('GEMINI_API_KEY'),
         GEMINI_MODELS: [
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-lite"
+            "gemini-3-flash-preview",
+            "gemini-2.5-flash"
         ],
         OPENROUTER_API_KEY: props.getProperty('OPENROUTER_API_KEY'),
         OPENROUTER_URL: 'https://openrouter.ai/api/v1/chat/completions',
         OPENROUTER_MODELS: [
             "meta-llama/llama-3.3-70b-instruct:free",
             "meta-llama/llama-3.2-3b-instruct:free",
-            "nvidia/nemotron-3-nano-30b-a3b:free"
+            "arcee-ai/trinity-large-preview:free",
+            "nvidia/nemotron-3-nano-30b-a3b:free",
+            "tngtech/deepseek-r1t2-chimera:free"
         ],
         OPENROUTER_FREE_MODEL: "openrouter/free",
         MAX_TOKENS: 1024,
